@@ -14,7 +14,8 @@ EXTENSIONS_IMAGES = {
     ".webp", ".ico", ".jfif", ".heic", ".heif",
 }
 EXTENSIONS_DOCS = {".txt", ".rtf", ".doc", ".docx", ".odt"}
-EXTENSIONS_OK = EXTENSIONS_IMAGES | EXTENSIONS_DOCS
+EXTENSIONS_PDF = {".pdf"}
+EXTENSIONS_OK = EXTENSIONS_IMAGES | EXTENSIONS_DOCS | EXTENSIONS_PDF
 
 def est_image(chemin: Path) -> bool:
     return chemin.suffix.lower() in EXTENSIONS_IMAGES
@@ -22,11 +23,14 @@ def est_image(chemin: Path) -> bool:
 def est_document(chemin: Path) -> bool:
     return chemin.suffix.lower() in EXTENSIONS_DOCS
 
+def est_pdf(chemin: Path) -> bool:
+    return chemin.suffix.lower() in EXTENSIONS_PDF
+
 def trouver_soffice() -> str | None:
     candidats = [
         "soffice", "libreoffice",
-        r"C:\Program Files\LibreOffice\program\soffice.exe",
-        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        r"C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+        r"C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
         "/usr/bin/soffice", "/usr/bin/libreoffice",
     ]
     for c in candidats:
@@ -178,10 +182,14 @@ def convertir_docx_texte(source: Path, dest: Path) -> None:
 def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int) -> str:
     ext = source.suffix.lower()
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if ext == ".pdf":
+        if Path(source).resolve() != Path(dest).resolve():
+            shutil.copy2(source, dest)
+        return "PDF copie sans reconversion."
     if ext in EXTENSIONS_IMAGES:
         if ext in {".heic", ".heif"}:
             try:
-                import pillow_heif  # type: ignore
+                import pillow_heif
                 pillow_heif.register_heif_opener()
             except Exception as e:
                 raise RuntimeError("Format HEIC non supporte (module pillow-heif absent).") from e
@@ -198,7 +206,5 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
         convertir_docx_texte(source, dest)
         return "DOCX converti en texte (LibreOffice non detecte : mise en page simplifiee)."
     if ext in {".rtf", ".doc", ".odt"}:
-        raise RuntimeError(
-            "Conversion de ce format bureautique necessite LibreOffice. Installez-le puis reessayez."
-        )
+        raise RuntimeError("Conversion de ce format bureautique necessite LibreOffice.")
     raise RuntimeError(f"Extension non geree : {ext}")

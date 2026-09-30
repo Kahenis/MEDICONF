@@ -8,6 +8,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from moteurs import (
+    dossier_application,
+    trouver_word,
+    trouver_soffice,
+    convertir_via_word,
+)
 
 EXTENSIONS_IMAGES = {
     ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff",
@@ -25,21 +31,6 @@ def est_document(chemin: Path) -> bool:
 
 def est_pdf(chemin: Path) -> bool:
     return chemin.suffix.lower() in EXTENSIONS_PDF
-
-def trouver_soffice() -> str | None:
-    candidats = [
-        "soffice", "libreoffice",
-        r"C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-        r"C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
-        "/usr/bin/soffice", "/usr/bin/libreoffice",
-    ]
-    for c in candidats:
-        if os.path.isfile(c):
-            return c
-        found = shutil.which(c)
-        if found:
-            return found
-    return None
 
 def nom_pdf_cible(source: Path, dossier_cible: Path, source_racine: Path | None,
                   conserver_arbo: bool, conflit: str) -> Path:
@@ -198,13 +189,21 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
     if ext == ".txt":
         convertir_texte(source, dest)
         return ""
+    if ext in {".rtf", ".doc", ".docx"} and trouver_word():
+        convertir_via_word(source, dest)
+        return "Converti avec Microsoft Word."
     soffice = trouver_soffice()
     if ext in {".rtf", ".doc", ".docx", ".odt"} and soffice:
         convertir_via_soffice(source, dest, soffice)
-        return ""
+        base = str(dossier_application()).lower()
+        via = "LibreOffice portable" if soffice.lower().startswith(base) else "LibreOffice"
+        return f"Converti avec {via}."
     if ext == ".docx":
         convertir_docx_texte(source, dest)
-        return "DOCX converti en texte (LibreOffice non detecte : mise en page simplifiee)."
+        return "DOCX converti en texte (Word / LibreOffice absents : mise en page simplifiee)."
     if ext in {".rtf", ".doc", ".odt"}:
-        raise RuntimeError("Conversion de ce format bureautique necessite LibreOffice.")
+        raise RuntimeError(
+            "Aucun moteur bureautique trouve. "
+            "Placez LibreOfficePortable a cote de MEDICONF.exe ou installez Word."
+        )
     raise RuntimeError(f"Extension non geree : {ext}")

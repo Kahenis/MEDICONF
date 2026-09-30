@@ -25,7 +25,7 @@ jobs:
 
       - name: PyInstaller
         run: |
-          pyinstaller --noconfirm --clean --windowed --onefile --name MEDICONF app.py
+          pyinstaller --noconfirm --clean --windowed --onefile --name MEDICONF boot.py
 
       - name: Publier l'executable
         uses: actions/upload-artifact@v4

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-from patches_ui import appliquer
-import app as appmod
+from menu import MenuDemarrage
 
-appliquer(appmod.ConvertisseurApp)
-appmod.main()
+if __name__ == "__main__":
+    MenuDemarrage().mainloop()

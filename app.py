@@ -82,13 +82,14 @@ class ConvertisseurApp(tk.Tk):
         ttk.Label(bloc, text="Chemin du dossier o\u00f9 seront enregistr\u00e9s les PDF :").pack(anchor="w")
         ligne = ttk.Frame(bloc)
         ligne.pack(fill="x", pady=6)
-        ttk.Entry(ligne, textvariable=self.var_cible).pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.entree_cible = ttk.Entry(ligne, textvariable=self.var_cible)
+        self.entree_cible.pack(side="left", fill="x", expand=True, padx=(0, 8))
         ttk.Button(ligne, text="Parcourir\u2026", command=self._parcourir_cible).pack(side="left", padx=(0, 8))
         ttk.Button(ligne, text="Choisir ce dossier", command=self._valider_cible).pack(side="left")
         opts = ttk.LabelFrame(p, text=" Options de parcours et de conversion ", padding=12)
         opts.pack(fill="x", padx=16, pady=8)
         self.var_sous = tk.BooleanVar(value=self.params.parcourir_sous_dossiers)
-        ttk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._sauver_params).pack(anchor="w", pady=3)
+        ttk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._basculer_sous_dossiers).pack(anchor="w", pady=3)
         self.var_arbo = tk.BooleanVar(value=self.params.conserver_arborescence)
         ttk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, command=self._sauver_params).pack(anchor="w", pady=3)
         self.var_comp = tk.BooleanVar(value=self.params.compression)
@@ -119,11 +120,43 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_qualite.configure(text=f"{v} %")
         self._sauver_params()
 
+    def _ecrire_cible(self, chemin: str) -> None:
+        chemin = (chemin or "").strip().strip('"')
+        if not chemin:
+            return
+        self.var_cible.set(chemin)
+        try:
+            self.entree_cible.delete(0, "end")
+            self.entree_cible.insert(0, chemin)
+        except Exception:
+            pass
+        self.params.dossier_cible = chemin
+        self._sauver_params()
+        self._log("Dossier cible : " + chemin)
+
     def _parcourir_cible(self) -> None:
-        initial = self.var_cible.get().strip() or str(Path.home())
-        d = filedialog.askdirectory(title="Choisir le dossier cible", initialdir=initial)
-        if d:
-            self.var_cible.set(d)
+        from patches_ui import dialogue_explorateur
+        d = dialogue_explorateur(self, "Choisir le dossier cible", True)
+        if not d:
+            messagebox.showwarning(APP_TITRE, "L'explorateur n'a pas renvoyé de chemin.", parent=self)
+            return
+        self._ecrire_cible(d)
+        self.after(200, lambda c=d: self._ecrire_cible(c))
+
+    def _valider_cible(self) -> None:
+        d = self.var_cible.get().strip()
+        if not d:
+            messagebox.showwarning(APP_TITRE, "Indiquez un dossier cible.")
+            return
+        self._ecrire_cible(d)
+        messagebox.showinfo(APP_TITRE, "Dossier cible enregistré :\n" + d, parent=self)
+
+    def _basculer_sous_dossiers(self) -> None:
+        self._sauver_params()
+        if getattr(self, "source_path", None) and Path(self.source_path).is_dir():
+            self.fichiers = self._scanner(self.source_path)
+            self._rafraichir_liste()
+            self._log(str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if self.var_sous.get() else "non"))
 
     def _valider_cible(self) -> None:
         d = self.var_cible.get().strip()
@@ -164,13 +197,8 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_source.pack(side="left", padx=8, fill="x", expand=True)
         ttk.Button(haut, text="Parcourir\u2026", command=self._parcourir_source).pack(side="left", padx=4)
         ttk.Button(haut, text="S\u00e9lectionner ce dossier source", command=self._choisir_dossier_source).pack(side="left")
-        filtres = ttk.Frame(p)
-        filtres.pack(fill="x", padx=12, pady=4)
-        ttk.Label(filtres, text="Afficher :").pack(side="left")
-        ttk.Checkbutton(filtres, text="Images", variable=self.filtre_images, command=self._rafraichir_liste).pack(side="left", padx=8)
-        ttk.Checkbutton(filtres, text="Documents", variable=self.filtre_docs, command=self._rafraichir_liste).pack(side="left", padx=8)
-        ttk.Button(filtres, text="Tout cocher", command=self._tout_cocher).pack(side="left", padx=(16, 4))
-        ttk.Button(filtres, text="Tout d\u00e9cocher", command=self._tout_decocher).pack(side="left")
+        ttk.Button(p, text="Tout cocher", command=self._tout_cocher).pack(anchor="w", padx=12, pady=(4, 0))
+        ttk.Button(p, text="Tout décocher", command=self._tout_decocher).pack(anchor="w", padx=12)
         corps = ttk.Frame(p)
         corps.pack(fill="both", expand=True, padx=12, pady=6)
         corps.columnconfigure(0, weight=3)
@@ -231,45 +259,33 @@ class ConvertisseurApp(tk.Tk):
             return
         self.source_path = path
         if path.is_file():
-            self.lbl_source.configure(text=f"{path.parent}   \u2014   {path.name}")
-            if not ressource_ok(path):
-                messagebox.showwarning(APP_TITRE, "Type de fichier non pris en charge.")
-                return
+            self.lbl_source.configure(text=f"{path.parent}   —   {path.name}")
             self.fichiers = [path]
             self._rafraichir_liste()
-            if messagebox.askyesno(APP_TITRE, f"Convertir ce fichier en PDF maintenant ?\n\n{path.name}"):
-                self._convertir_un_fichier(path)
             return
-        self.lbl_source.configure(text=f"{path}   \u2014   {path.name}")
+        self.lbl_source.configure(text=f"{path}   —   {path.name}")
         self.fichiers = self._scanner(path)
-        if not self.fichiers:
-            messagebox.showinfo(APP_TITRE, "Aucun fichier image ou bureautique trouv\u00e9.")
         self._rafraichir_liste()
+        self._log("Source : " + str(path) + " — " + str(len(self.fichiers)) + " fichier(s)")
 
     def _scanner(self, racine: Path) -> list[Path]:
         fichiers: list[Path] = []
+        racine = Path(racine)
         if self.var_sous.get():
             for dirpath, _dns, names in os.walk(racine):
                 for n in names:
                     p = Path(dirpath) / n
-                    if ressource_ok(p):
+                    if p.is_file():
                         fichiers.append(p)
         else:
-            for p in racine.iterdir():
-                if p.is_file() and ressource_ok(p):
-                    fichiers.append(p)
+            for enfant in racine.iterdir():
+                if enfant.is_file():
+                    fichiers.append(enfant)
         fichiers.sort(key=lambda x: str(x).lower())
         return fichiers
 
     def _visible(self) -> list[Path]:
-        out = []
-        for p in self.fichiers:
-            if est_image(p) and not self.filtre_images.get():
-                continue
-            if est_document(p) and not self.filtre_docs.get():
-                continue
-            out.append(p)
-        return out
+        return list(self.fichiers)
 
     def _libelle(self, p: Path) -> str:
         if self.source_path and self.source_path.is_dir() and self.var_sous.get():

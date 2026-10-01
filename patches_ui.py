@@ -434,18 +434,11 @@ def appliquer(cls) -> None:
                 pass
         os._exit(0)
 
-    cls._parcourir_cible = _parcourir_cible
-    cls._valider_cible = _valider_cible
     cls._parcourir_source = _parcourir_source
     cls._choisir_dossier_source = _choisir_dossier_source
-    cls._scanner = _scanner
-    cls._visible = _visible
-    cls._rafraichir_liste = _rafraichir_liste
     cls._libelle = _libelle
     cls._clic_liste = _clic_liste
     cls._afficher_apercu = _afficher_apercu
-    cls._charger_source = _charger_source
-    cls._sauver_et_rescan = _sauver_et_rescan
     cls._quitter = _quitter
 
 

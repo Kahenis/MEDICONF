@@ -106,12 +106,17 @@ def _rappel(_hwnd, msg, lp, _data):
     return 0
 
 
-def dialogue_dossier(titre: str) -> str:
+def dialogue_dossier(titre: str, parent=None) -> str:
     if os.name != "nt":
-        return filedialog.askdirectory(title=titre) or ""
+        return filedialog.askdirectory(title=titre, parent=parent) or ""
     _dernier["chemin"] = ""
     display = ctypes.create_unicode_buffer(520)
     bi = _BROWSEINFO()
+    if parent is not None:
+        try:
+            bi.hwndOwner = parent.winfo_id()
+        except Exception:
+            bi.hwndOwner = None
     bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
     bi.lpszTitle = titre + " — dossiers et fichiers visibles."
     bi.ulFlags = 0x0040 | 0x0010 | 0x4000 | 0x8000
@@ -119,21 +124,19 @@ def dialogue_dossier(titre: str) -> str:
     ctypes.windll.ole32.CoInitialize(None)
     shell = _shell()
     pidl = shell.SHBrowseForFolderW(ctypes.byref(bi))
-    chemin = ""
-    if pidl:
-        chemin = _chemin_pidl(pidl) or _dernier["chemin"]
-        ctypes.windll.ole32.CoTaskMemFree(ctypes.c_void_p(pidl))
-    else:
+    if not pidl:
         return ""
+    chemin = _chemin_pidl(pidl) or _dernier["chemin"]
+    ctypes.windll.ole32.CoTaskMemFree(ctypes.c_void_p(pidl))
     chemin = resoudre_chemin(chemin or _dernier["chemin"])
     if not chemin or not Path(chemin).exists():
         messagebox.showerror(
             "MEDICONF",
-            "Le dossier a ete choisi mais Windows n'a pas renvoye son chemin.\n"
-            f"Nom affiche : {display.value or '?'}\n\n"
-            "Choisissez-le a nouveau dans le selecteur de secours.",
+            "Windows n'a pas renvoye le chemin du dossier.\n"
+            f"Nom affiche : {display.value or '?'}",
+            parent=parent,
         )
-        return filedialog.askdirectory(title=titre) or ""
+        return filedialog.askdirectory(title=titre, parent=parent) or ""
     return chemin
 
 
@@ -161,9 +164,33 @@ def _enregistrer_cible(fen, chemin: str) -> bool:
     return True
 
 
+def _cases(fen):
+    trouves = []
+
+    def walk(w):
+        for enfant in w.winfo_children():
+            try:
+                txt = str(enfant.cget("text")).lower()
+            except Exception:
+                txt = ""
+            if txt:
+                trouves.append((txt, enfant))
+            walk(enfant)
+
+    walk(fen)
+    return trouves
+
+
+def _coche(widget) -> bool:
+    try:
+        return bool(widget.instate(["selected"]))
+    except Exception:
+        return False
+
+
 def appliquer(cls) -> None:
     def _parcourir_cible(self) -> None:
-        d = dialogue_dossier("Choisir le dossier cible")
+        d = dialogue_dossier("Choisir le dossier cible", self)
         if d:
             _enregistrer_cible(self, d)
 
@@ -186,14 +213,21 @@ def appliquer(cls) -> None:
                 self._charger_source(Path(f))
 
     def _choisir_dossier_source(self) -> None:
-        d = dialogue_dossier("Sélectionner le dossier source")
+        d = dialogue_dossier("Sélectionner le dossier source", self)
         if d:
             self._charger_source(Path(d))
+
+    def _sous_actif(self) -> bool:
+        for txt, w in _cases(self):
+            if "sous-dossier" in txt:
+                return _coche(w)
+        return bool(self.var_sous.get())
 
     def _scanner(self, racine: Path):
         fichiers = []
         racine = Path(resoudre_chemin(str(racine)))
-        if bool(self.var_sous.get()):
+        profond = self._sous_actif()
+        if profond:
             for dirpath, _dirs, names in os.walk(racine):
                 for n in names:
                     p = Path(dirpath) / n
@@ -207,19 +241,32 @@ def appliquer(cls) -> None:
         return fichiers
 
     def _sauver_et_rescan(self) -> None:
+        self.after(80, self._rescan_sous)
+
+    def _rescan_sous(self) -> None:
+        actif = self._sous_actif()
         try:
-            self.params.parcourir_sous_dossiers = bool(self.var_sous.get())
+            self.var_sous.set(actif)
+            self.params.parcourir_sous_dossiers = actif
             self.params.sauvegarder()
         except Exception:
             pass
         if getattr(self, "source_path", None) and Path(self.source_path).is_dir():
             self.fichiers = self._scanner(self.source_path)
             self._rafraichir_liste()
-            self._log(f"{len(self.fichiers)} fichier(s) — sous-dossiers : {'oui' if self.var_sous.get() else 'non'}")
+            self._log(f"{len(self.fichiers)} fichier(s) — sous-dossiers : {'oui' if actif else 'non'}")
+
+    def _filtres_actifs(self):
+        voir_img, voir_doc = True, True
+        for txt, w in _cases(self):
+            if txt == "images":
+                voir_img = _coche(w)
+            elif txt == "documents":
+                voir_doc = _coche(w)
+        return voir_img, voir_doc
 
     def _visible(self):
-        voir_img = bool(self.filtre_images.get())
-        voir_doc = bool(self.filtre_docs.get())
+        voir_img, voir_doc = self._filtres_actifs()
         out = []
         for p in self.fichiers:
             if est_pdf(p):
@@ -368,8 +415,13 @@ def brancher(fen, menu) -> None:
             try:
                 if "sous-dossier" in txt:
                     enfant.configure(command=fen._sauver_et_rescan)
+                    enfant.bind("<ButtonRelease-1>", lambda _e: fen._sauver_et_rescan(), add="+")
                 if txt in ("images", "documents"):
                     enfant.configure(command=fen._rafraichir_liste)
+                    enfant.bind("<ButtonRelease-1>", lambda _e: fen.after(80, fen._rafraichir_liste), add="+")
+                if enfant.winfo_class() in ("TEntry", "Entry"):
+                    enfant.bind("<FocusOut>", lambda _e: _enregistrer_cible(fen, fen.var_cible.get()), add="+")
+                    enfant.bind("<Return>", lambda _e: _enregistrer_cible(fen, fen.var_cible.get()), add="+")
             except Exception:
                 pass
             relier(enfant)

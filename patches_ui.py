@@ -106,103 +106,95 @@ def _rappel(_hwnd, msg, lp, _data):
     return 0
 
 
-def choisir_dossier_fiable(parent, titre: str) -> str:
-    """Selecteur qui affiche dossiers et fichiers, et renvoie toujours le vrai chemin."""
-    import tkinter as tk
-    from tkinter import ttk
-    choix = {"chemin": ""}
-    win = tk.Toplevel(parent)
-    win.title(titre)
-    win.geometry("720x480")
-    win.transient(parent)
-    win.grab_set()
-    courant = {"path": Path.home()}
-    var = tk.StringVar(value=str(courant["path"]))
-    ttk.Label(win, text="Chemin reel du dossier. Les fichiers sont affiches pour reperage.").pack(anchor="w", padx=10, pady=(8, 2))
-    ent = ttk.Entry(win, textvariable=var)
-    ent.pack(fill="x", padx=10, pady=4)
-    liste = tk.Listbox(win, font=("Segoe UI", 10))
-    liste.pack(fill="both", expand=True, padx=10, pady=4)
+def dialogue_explorateur(parent, titre: str, dossiers: bool = True) -> str:
+    """Dialogue natif de l'Explorateur Windows (IFileDialog) : reseau, lecteurs, chemin reel."""
+    if os.name != "nt":
+        if dossiers:
+            return filedialog.askdirectory(title=titre, parent=parent) or ""
+        return filedialog.askopenfilename(title=titre, parent=parent) or ""
+    try:
+        return _dialogue_com(parent, titre, dossiers)
+    except Exception as e:
+        messagebox.showerror("MEDICONF", f"Dialogue Windows indisponible :\n{e}", parent=parent)
+        if dossiers:
+            return filedialog.askdirectory(title=titre, parent=parent) or ""
+        return filedialog.askopenfilename(title=titre, parent=parent) or ""
 
-    def racines():
-        items = []
-        if os.name == "nt":
-            for lettre in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-                p = Path(f"{lettre}:\\")
-                if p.exists():
-                    items.append(p)
-        items.append(Path.home())
-        return items
 
-    def remplir(path: Path):
-        liste.delete(0, "end")
-        courant["path"] = path
-        var.set(str(path))
-        liste.insert("end", "[..] dossier parent")
-        try:
-            entrees = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
-        except Exception as e:
-            liste.insert("end", f"(lecture impossible : {e})")
-            return
-        for p in entrees:
-            if p.is_dir():
-                liste.insert("end", f"[Dossier]  {p.name}")
-            else:
-                liste.insert("end", f"[Fichier]  {p.name}")
+def _dialogue_com(parent, titre: str, dossiers: bool) -> str:
+    import uuid
+    from ctypes import POINTER, WINFUNCTYPE, byref, c_void_p, cast, sizeof, windll, HRESULT
+    from ctypes.wintypes import DWORD, HWND, LPWSTR
 
-    def aller(path: Path):
-        path = Path(path)
-        if path.is_file():
-            path = path.parent
-        if path.exists() and path.is_dir():
-            remplir(path)
+    ole32 = windll.ole32
+    ole32.CoInitialize.argtypes = [c_void_p]
+    ole32.CoInitialize.restype = HRESULT
+    ole32.CoCreateInstance.argtypes = [c_void_p, c_void_p, DWORD, c_void_p, POINTER(c_void_p)]
+    ole32.CoCreateInstance.restype = HRESULT
+    ole32.CoTaskMemFree.argtypes = [c_void_p]
+    ole32.CoTaskMemFree.restype = None
+
+    hr = ole32.CoInitialize(None)
+    if hr < 0 and (hr & 0xFFFFFFFF) != 0x80010106:
+        raise OSError(f"CoInitialize {hr & 0xFFFFFFFF:08X}")
+
+    clsid = (ctypes.c_byte * 16).from_buffer_copy(uuid.UUID("{DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7}").bytes_le)
+    iid = (ctypes.c_byte * 16).from_buffer_copy(uuid.UUID("{D57C7288-D4AD-4768-BE02-9D969532D960}").bytes_le)
+    com = c_void_p()
+    hr = ole32.CoCreateInstance(clsid, None, 1, iid, byref(com))
+    if hr < 0 or not com.value:
+        raise OSError(f"IFileOpenDialog {hr & 0xFFFFFFFF:08X}")
+
+    def methode(obj, index, proto):
+        vtbl = cast(obj, POINTER(c_void_p))[0]
+        return cast(vtbl + index * sizeof(c_void_p), POINTER(proto))[0]
+
+    release = methode(com, 2, WINFUNCTYPE(HRESULT, c_void_p))
+    show = methode(com, 3, WINFUNCTYPE(HRESULT, c_void_p, HWND))
+    set_options = methode(com, 9, WINFUNCTYPE(HRESULT, c_void_p, DWORD))
+    get_options = methode(com, 10, WINFUNCTYPE(HRESULT, c_void_p, POINTER(DWORD)))
+    set_title = methode(com, 17, WINFUNCTYPE(HRESULT, c_void_p, LPWSTR))
+    set_ok = methode(com, 18, WINFUNCTYPE(HRESULT, c_void_p, LPWSTR))
+    get_result = methode(com, 20, WINFUNCTYPE(HRESULT, c_void_p, POINTER(c_void_p)))
+    try:
+        flags = DWORD()
+        get_options(com, byref(flags))
+        flags.value |= 0x40 | 0x800
+        if dossiers:
+            flags.value |= 0x20
         else:
-            messagebox.showerror("MEDICONF", f"Dossier introuvable :\n{path}", parent=win)
-
-    def ouvrir(_evt=None):
-        sel = liste.curselection()
-        if not sel:
-            return
-        texte = liste.get(sel[0])
-        if texte.startswith("[..]"):
-            aller(courant["path"].parent)
-            return
-        nom = texte.split("  ", 1)[-1]
-        cible = Path(nom) if (len(nom) > 2 and nom[1] == ":") or nom.startswith("\\\\") else courant["path"] / nom
-        if cible.is_dir():
-            aller(cible)
-
-    def valider():
-        texte = var.get().strip().strip('"')
-        if not texte:
-            return
-        p = Path(texte)
-        if p.is_file():
-            p = p.parent
-        if not p.exists():
-            messagebox.showerror("MEDICONF", f"Dossier introuvable :\n{p}", parent=win)
-            return
-        choix["chemin"] = str(p.resolve())
-        win.destroy()
-
-    def racine():
-        liste.delete(0, "end")
-        courant["path"] = Path("Ce PC")
-        var.set("")
-        for p in racines():
-            liste.insert("end", f"[Dossier]  {p}")
-
-    barre = ttk.Frame(win)
-    barre.pack(fill="x", padx=10, pady=8)
-    ttk.Button(barre, text="Ce PC / lecteurs", command=racine).pack(side="left")
-    ttk.Button(barre, text="Ouvrir ce chemin", command=lambda: aller(var.get())).pack(side="left", padx=6)
-    ttk.Button(barre, text="Choisir ce dossier", command=valider).pack(side="right")
-    ttk.Button(barre, text="Annuler", command=win.destroy).pack(side="right", padx=6)
-    liste.bind("<Double-Button-1>", ouvrir)
-    ent.bind("<Return>", lambda _e: aller(var.get()))
-    aller(Path.home())
-    parent.wait_window(win)
-    return choix["chemin"]
+            flags.value |= 0x1000
+        set_options(com, flags)
+        set_title(com, titre)
+        set_ok(com, "Choisir ce dossier" if dossiers else "Selectionner")
+        hwnd = 0
+        try:
+            hwnd = int(parent.winfo_id())
+        except Exception:
+            hwnd = 0
+        hr = show(com, HWND(hwnd))
+        try:
+            windll.user32.EnableWindow(HWND(hwnd), 1)
+        except Exception:
+            pass
+        if hr < 0:
+            return ""
+        item = c_void_p()
+        if get_result(com, byref(item)) < 0 or not item.value:
+            return ""
+        get_name = methode(item, 5, WINFUNCTYPE(HRESULT, c_void_p, DWORD, POINTER(LPWSTR)))
+        rel_item = methode(item, 2, WINFUNCTYPE(HRESULT, c_void_p))
+        nom = LPWSTR()
+        try:
+            if get_name(item, DWORD(0x80058000), byref(nom)) < 0 or not nom.value:
+                return ""
+            return nom.value
+        finally:
+            if nom:
+                ole32.CoTaskMemFree(cast(nom, c_void_p))
+            rel_item(item)
+    finally:
+        release(com)
 
 
 def _enregistrer_cible(fen, chemin: str) -> bool:
@@ -255,7 +247,7 @@ def _coche(widget) -> bool:
 
 def appliquer(cls) -> None:
     def _parcourir_cible(self) -> None:
-        d = choisir_dossier_fiable(self, "Choisir le dossier cible")
+        d = dialogue_explorateur(self, "Choisir le dossier cible", True)
         if d:
             _enregistrer_cible(self, d)
 
@@ -268,17 +260,12 @@ def appliquer(cls) -> None:
         if type_sel == "dossier":
             self._choisir_dossier_source()
         elif type_sel == "fichier":
-            f = filedialog.askopenfilename(
-                title="Choisir un fichier source",
-                filetypes=[("Tous les fichiers", "*.*"), ("PDF", "*.pdf"),
-                           ("Images", "*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff;*.webp"),
-                           ("Documents", "*.txt;*.rtf;*.doc;*.docx;*.odt")],
-            )
+            f = dialogue_explorateur(self, "Choisir un fichier source", False)
             if f:
                 self._charger_source(Path(f))
 
     def _choisir_dossier_source(self) -> None:
-        d = choisir_dossier_fiable(self, "Sélectionner le dossier source")
+        d = dialogue_explorateur(self, "Sélectionner le dossier source", True)
         if d:
             self._charger_source(Path(d))
 

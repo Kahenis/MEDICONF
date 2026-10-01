@@ -2,17 +2,49 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 from conversion import est_document, est_image, est_pdf
 from explorateur import choisir_type_source
+
+def _enregistrer_cible(fen, chemin: str) -> bool:
+    chemin = (chemin or "").strip()
+    if not chemin:
+        return False
+    p = Path(chemin)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        messagebox.showerror("MEDICONF", f"Dossier cible impossible :\n{e}", parent=fen)
+        return False
+    if fen.var_cible.get() != str(p):
+        fen.var_cible.set(str(p))
+    fen.params.dossier_cible = str(p)
+    try:
+        fen.params.parcourir_sous_dossiers = fen.var_sous.get()
+        fen.params.compression = fen.var_comp.get()
+        fen.params.qualite_compression = int(float(fen.scale_qualite.get()))
+        fen.params.conserver_arborescence = fen.var_arbo.get()
+        fen.params.conflit = fen.var_conflit.get()
+    except Exception:
+        pass
+    fen.params.sauvegarder()
+    if getattr(fen, "lbl_cible_etat", None) is not None:
+        fen.lbl_cible_etat.configure(text=f"Dossier cible enregistre : {p}")
+    return True
 
 def appliquer(cls):
     def _parcourir_cible(self):
         initial = self.var_cible.get().strip()
         d = filedialog.askdirectory(parent=self, title="Choisir le dossier cible", initialdir=initial if initial and Path(initial).is_dir() else str(Path.home()))
         if d:
-            self.var_cible.set(d)
-            self._sauver_params()
+            _enregistrer_cible(self, d)
+    def _valider_cible(self):
+        d = self.var_cible.get().strip()
+        if not d:
+            messagebox.showwarning("MEDICONF", "Indiquez un dossier cible.", parent=self)
+            return
+        if _enregistrer_cible(self, d):
+            messagebox.showinfo("MEDICONF", f"Dossier cible enregistre :\n{d}", parent=self)
     def _parcourir_source(self):
         type_sel = choisir_type_source(self)
         if type_sel == "dossier":
@@ -22,19 +54,8 @@ def appliquer(cls):
             if f:
                 self._charger_source(Path(f))
     def _choisir_dossier_source(self):
-        tape = self.var_source_saisie.get().strip() if getattr(self, "var_source_saisie", None) is not None else ""
-        if tape:
-            p = Path(tape)
-            if p.is_file():
-                p = p.parent
-            if not p.exists():
-                messagebox.showerror("MEDICONF", f"Chemin introuvable :\n{tape}", parent=self)
-                return
-            self._charger_source(p)
-            return
         d = filedialog.askdirectory(parent=self, title="Selectionner le dossier source")
         if d:
-            self.var_source_saisie.set(d)
             self._charger_source(Path(d))
     def _visible(self):
         out = []
@@ -69,8 +90,6 @@ def appliquer(cls):
                 self._convertir_un_fichier(path)
             return
         ancien_c(self, path)
-        if getattr(self, "var_source_saisie", None) is not None and self.source_path:
-            self.var_source_saisie.set(str(self.source_path))
     def _afficher_apercu(self, path):
         self.canvas_apercu.delete("all")
         self.apercu_img = None
@@ -96,32 +115,21 @@ def appliquer(cls):
                 return
         except Exception as e:
             self.canvas_apercu.create_text(cw // 2, ch // 2, text=str(e), fill="#444")
-            return
     def _sauver_params(self):
-        try:
-            self.params.dossier_cible = self.var_cible.get().strip()
-            self.params.parcourir_sous_dossiers = self.var_sous.get()
-            self.params.compression = self.var_comp.get()
-            self.params.qualite_compression = int(float(self.scale_qualite.get()))
-            self.params.conserver_arborescence = self.var_arbo.get()
-            self.params.conflit = self.var_conflit.get()
-            self.params.sauvegarder()
-        except Exception:
-            pass
+        _enregistrer_cible(self, self.var_cible.get())
     def _quitter(self):
-        _sauver_params(self)
+        _enregistrer_cible(self, self.var_cible.get())
         menu = getattr(self, "_menu_principal", None)
-        try:
-            self.destroy()
-        except Exception:
-            pass
+        try: self.destroy()
+        except Exception: pass
         if menu is not None:
             try:
-                menu.deiconify(); menu.lift(); menu.focus_force(); return
+                menu.deiconify(); menu.lift(); return
             except Exception:
                 pass
         os._exit(0)
     cls._parcourir_cible = _parcourir_cible
+    cls._valider_cible = _valider_cible
     cls._parcourir_source = _parcourir_source
     cls._choisir_dossier_source = _choisir_dossier_source
     cls._visible = _visible
@@ -134,15 +142,16 @@ def appliquer(cls):
 def brancher(fen, menu):
     import tkinter as tk
     fen._menu_principal = menu
-    barre = tk.Frame(fen, bg="#f4f6f8")
-    barre.place(x=8, y=36, relwidth=1.0, height=32)
-    tk.Label(barre, text="Dossier ou fichier source :", bg="#f4f6f8").pack(side="left")
-    fen.var_source_saisie = tk.StringVar()
-    tk.Entry(barre, textvariable=fen.var_source_saisie).pack(side="left", fill="x", expand=True, padx=6)
-    tk.Button(barre, text="Utiliser ce chemin", command=fen._choisir_dossier_source).pack(side="left", padx=4)
-    tk.Button(barre, text="Retour au menu", command=fen._quitter).pack(side="right", padx=8)
-    try:
-        fen.var_cible.trace_add("write", lambda *_: fen._sauver_params())
-    except Exception:
-        pass
+    tk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)
+    fen.lbl_cible_etat = tk.Label(fen, text="", bg="#f4f6f8", fg="#1f4e79")
+    fen.lbl_cible_etat.place(x=12, y=8)
+    if fen.params.dossier_cible:
+        fen.lbl_cible_etat.configure(text=f"Dossier cible : {fen.params.dossier_cible}")
+    def lier(w):
+        for enfant in w.winfo_children():
+            if enfant.winfo_class() in ("TEntry", "Entry"):
+                enfant.bind("<FocusOut>", lambda _e: _enregistrer_cible(fen, fen.var_cible.get()), add="+")
+                enfant.bind("<Return>", lambda _e: _enregistrer_cible(fen, fen.var_cible.get()), add="+")
+            lier(enfant)
+    fen.after(300, lambda: lier(fen))

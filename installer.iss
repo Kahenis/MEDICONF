@@ -1,4 +1,4 @@
-; Inno Setup - dossier MEDICONF dans Program Files
+; Inno Setup - exe unique dans Program Files
 #define MyAppName "MEDICONF"
 #define MyAppVersion "1.0"
 #define MyAppPublisher "JF GUILARD"
@@ -26,7 +26,7 @@ Name: "desktopicon"; Description: "Creer un raccourci sur le bureau"; GroupDescr
 Name: "libreoffice"; Description: "Telecharger et installer LibreOffice Portable a cote de MEDICONF (environ 213 Mo)"; GroupDescription: "Bureautique :"; Flags: unchecked
 
 [Files]
-Source: "dist\MEDICONF\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\MEDICONF.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "installer-lo.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

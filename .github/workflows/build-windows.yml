@@ -27,8 +27,17 @@ jobs:
         run: |
           pyinstaller --noconfirm --clean --windowed --onefile --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import app boot.py
 
+      - name: Inno Setup
+        run: choco install innosetup -y
+
+      - name: Installeur
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
       - name: Publier l'executable
         uses: actions/upload-artifact@v4
         with:
           name: MEDICONF-Windows
-          path: dist/MEDICONF.exe
+          path: |
+            dist/MEDICONF.exe
+            installer-out/MEDICONF-Setup.exe

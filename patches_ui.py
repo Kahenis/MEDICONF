@@ -454,15 +454,24 @@ def brancher(fen, menu) -> None:
     fen._menu_principal = menu
     tk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)
-    fen.zone_drop.bind("<Button-1>", fen._clic_liste)
+    try:
+        fen.zone_drop.bind("<Button-1>", fen._clic_liste)
+    except Exception:
+        pass
     try:
         fen.filtre_images.set(True)
         fen.filtre_docs.set(True)
     except Exception:
         pass
 
+    a_retirer = []
+
     def relier(w):
-        for enfant in w.winfo_children():
+        try:
+            enfants = list(w.winfo_children())
+        except Exception:
+            return
+        for enfant in enfants:
             try:
                 txt = str(enfant.cget("text")).lower()
             except Exception:
@@ -470,10 +479,19 @@ def brancher(fen, menu) -> None:
             try:
                 if "sous-dossier" in txt:
                     enfant.configure(command=fen._sauver_et_rescan)
-                    enfant.bind("<ButtonRelease-1>", lambda _e: fen._sauver_et_rescan(), add="+")
+                    enfant.bind("<ButtonRelease-1>", lambda _e: fen.after(80, fen._sauver_et_rescan), add="+")
                 if txt in ("images", "documents", "afficher :"):
-                    enfant.destroy()
+                    a_retirer.append(enfant)
             except Exception:
                 pass
             relier(enfant)
-    relier(fen)
+
+    try:
+        relier(fen)
+        for enfant in a_retirer:
+            try:
+                enfant.destroy()
+            except Exception:
+                pass
+    except Exception:
+        pass

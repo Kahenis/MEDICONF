@@ -41,7 +41,10 @@ class MenuDemarrage(tk.Tk):
                 fen = ConvertisseurApp(self)
             except TypeError:
                 fen = ConvertisseurApp()
-            brancher(fen, self)
+            try:
+                brancher(fen, self)
+            except Exception:
+                messagebox.showerror("MEDICONF", traceback.format_exc()[-1200:])
             fen.lift()
         except Exception:
             self.deiconify()

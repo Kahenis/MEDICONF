@@ -2,8 +2,6 @@
 from __future__ import annotations
 import os, tkinter as tk
 from tkinter import ttk
-COULEUR_FOND = "#eef2f6"
-COULEUR_ACCENT = "#1f4e79"
 CREDIT = "Cr\u00e9ation et D\u00e9veloppement par JF GUILARD"
 
 class MenuDemarrage(tk.Tk):
@@ -12,10 +10,10 @@ class MenuDemarrage(tk.Tk):
         self.title("MEDICONF")
         self.geometry("760x460")
         self.minsize(640, 380)
-        self.configure(bg=COULEUR_FOND)
-        ttk.Label(self, text="MEDICONF", font=("Segoe UI", 22, "bold"), background=COULEUR_FOND, foreground=COULEUR_ACCENT).pack(pady=(28, 4))
-        ttk.Label(self, text=CREDIT, background=COULEUR_FOND).pack(pady=(0, 2))
-        ttk.Label(self, text="Choisissez le module a lancer", background=COULEUR_FOND).pack(pady=(0, 22))
+        self.configure(bg="#eef2f6")
+        ttk.Label(self, text="MEDICONF", font=("Segoe UI", 22, "bold"), background="#eef2f6", foreground="#1f4e79").pack(pady=(28, 4))
+        ttk.Label(self, text=CREDIT, background="#eef2f6").pack(pady=(0, 2))
+        ttk.Label(self, text="Choisissez le module a lancer", background="#eef2f6").pack(pady=(0, 22))
         zone = ttk.Frame(self)
         zone.pack(fill="both", expand=True, padx=36, pady=(0, 28))
         zone.columnconfigure(0, weight=1); zone.columnconfigure(1, weight=1); zone.rowconfigure(0, weight=1)
@@ -28,17 +26,22 @@ class MenuDemarrage(tk.Tk):
         tk.Button(cadre, text=titre, font=("Segoe UI", 14, "bold"), fg="#fff", bg=couleur, relief="flat", command=cmd).pack(fill="both", expand=True)
         tk.Label(cadre, text=sous, fg="#e8eef5", bg=couleur).pack(pady=(0, 10))
     def _fermer_tout(self):
-        try: self.destroy()
-        except tk.TclError: pass
+        try:
+            self.quit(); self.destroy()
+        except tk.TclError:
+            pass
         os._exit(0)
     def _ouvrir_pdf(self):
-        from patches_ui import appliquer, brancher_memoire
+        from patches_ui import appliquer, brancher
         from app import ConvertisseurApp
         appliquer(ConvertisseurApp)
         self.withdraw()
-        try: fen = ConvertisseurApp(self)
-        except TypeError: fen = ConvertisseurApp()
-        brancher_memoire(fen)
+        try:
+            fen = ConvertisseurApp(self)
+        except TypeError:
+            fen = ConvertisseurApp()
+        brancher(fen, self)
+        fen.lift()
     def _ouvrir_texte(self):
         from reception import ReceptionApp
         self.withdraw()

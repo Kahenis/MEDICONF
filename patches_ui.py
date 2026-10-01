@@ -1,40 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import ctypes, os
-from ctypes import wintypes
+import os
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from conversion import est_document, est_image, est_pdf
 from explorateur import choisir_type_source
 
-class _BROWSEINFO(ctypes.Structure):
-    _fields_ = [("hwndOwner", wintypes.HWND), ("pidlRoot", ctypes.c_void_p), ("pszDisplayName", ctypes.c_wchar_p), ("lpszTitle", ctypes.c_wchar_p), ("ulFlags", wintypes.UINT), ("lpfn", ctypes.c_void_p), ("lParam", ctypes.c_long), ("iImage", ctypes.c_int)]
-
-def dialogue_dossier(titre: str) -> str:
-    if os.name != "nt":
-        return filedialog.askdirectory(title=titre) or ""
-    shell = ctypes.windll.shell32
-    ole = ctypes.windll.ole32
-    display = ctypes.create_unicode_buffer(260)
-    bi = _BROWSEINFO()
-    bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
-    bi.lpszTitle = titre
-    bi.ulFlags = 0x0001 | 0x0040 | 0x0010 | 0x4000 | 0x8000 | 0x0050
-    ole.CoInitialize(None)
-    pidl = shell.SHBrowseForFolderW(ctypes.byref(bi))
-    if not pidl:
-        return ""
-    chemin = ctypes.create_unicode_buffer(1024)
-    ok = shell.SHGetPathFromIDListW(pidl, chemin)
-    ole.CoTaskMemFree(pidl)
-    return chemin.value if ok else ""
-
-def appliquer(cls) -> None:
+def appliquer(cls):
     def _parcourir_cible(self):
-        d = dialogue_dossier("Choisir le dossier cible")
+        initial = self.var_cible.get().strip()
+        d = filedialog.askdirectory(parent=self, title="Choisir le dossier cible", initialdir=initial if initial and Path(initial).is_dir() else str(Path.home()))
         if d:
-            if Path(d).is_file():
-                d = str(Path(d).parent)
             self.var_cible.set(d)
             self._sauver_params()
     def _parcourir_source(self):
@@ -46,13 +22,20 @@ def appliquer(cls) -> None:
             if f:
                 self._charger_source(Path(f))
     def _choisir_dossier_source(self):
-        d = dialogue_dossier("Selectionner le dossier source (fichiers visibles)")
-        if not d:
+        tape = self.var_source_saisie.get().strip() if getattr(self, "var_source_saisie", None) is not None else ""
+        if tape:
+            p = Path(tape)
+            if p.is_file():
+                p = p.parent
+            if not p.exists():
+                messagebox.showerror("MEDICONF", f"Chemin introuvable :\n{tape}", parent=self)
+                return
+            self._charger_source(p)
             return
-        p = Path(d)
-        if p.is_file():
-            p = p.parent
-        self._charger_source(p)
+        d = filedialog.askdirectory(parent=self, title="Selectionner le dossier source")
+        if d:
+            self.var_source_saisie.set(d)
+            self._charger_source(Path(d))
     def _visible(self):
         out = []
         for p in self.fichiers:
@@ -73,6 +56,9 @@ def appliquer(cls) -> None:
     ancien_c = cls._charger_source
     def _charger_source(self, path):
         path = Path(path)
+        if not path.exists():
+            messagebox.showerror("MEDICONF", f"Chemin introuvable :\n{path}", parent=self)
+            return
         if path.is_file() and est_pdf(path):
             self.source_path = path
             self.lbl_source.configure(text=f"{path.parent}   --   {path.name}")
@@ -83,6 +69,8 @@ def appliquer(cls) -> None:
                 self._convertir_un_fichier(path)
             return
         ancien_c(self, path)
+        if getattr(self, "var_source_saisie", None) is not None and self.source_path:
+            self.var_source_saisie.set(str(self.source_path))
     def _afficher_apercu(self, path):
         self.canvas_apercu.delete("all")
         self.apercu_img = None
@@ -95,7 +83,7 @@ def appliquer(cls) -> None:
             im = None
             if est_image(path):
                 im = Image.open(path)
-            elif est_pdf(path):
+            elif path.suffix.lower() == ".pdf":
                 import pypdfium2 as pdfium
                 doc = pdfium.PdfDocument(str(path))
                 page = doc[0]
@@ -107,9 +95,8 @@ def appliquer(cls) -> None:
                 self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
                 return
         except Exception as e:
-            self.canvas_apercu.create_text(cw // 2, ch // 2, text=f"Apercu impossible\n{e}", fill="#444")
+            self.canvas_apercu.create_text(cw // 2, ch // 2, text=str(e), fill="#444")
             return
-        self.canvas_apercu.create_text(20, 20, anchor="nw", text=path.name, fill="#222")
     def _sauver_params(self):
         try:
             self.params.dossier_cible = self.var_cible.get().strip()
@@ -123,16 +110,16 @@ def appliquer(cls) -> None:
             pass
     def _quitter(self):
         _sauver_params(self)
-        maitre = getattr(self, "master", None)
+        menu = getattr(self, "_menu_principal", None)
         try:
             self.destroy()
         except Exception:
             pass
-        try:
-            if maitre is not None:
-                maitre.deiconify(); maitre.lift(); return
-        except Exception:
-            pass
+        if menu is not None:
+            try:
+                menu.deiconify(); menu.lift(); menu.focus_force(); return
+            except Exception:
+                pass
         os._exit(0)
     cls._parcourir_cible = _parcourir_cible
     cls._parcourir_source = _parcourir_source
@@ -144,10 +131,18 @@ def appliquer(cls) -> None:
     cls._sauver_params = _sauver_params
     cls._quitter = _quitter
 
-def brancher_memoire(fen):
+def brancher(fen, menu):
+    import tkinter as tk
+    fen._menu_principal = menu
+    barre = tk.Frame(fen, bg="#f4f6f8")
+    barre.place(x=8, y=36, relwidth=1.0, height=32)
+    tk.Label(barre, text="Dossier ou fichier source :", bg="#f4f6f8").pack(side="left")
+    fen.var_source_saisie = tk.StringVar()
+    tk.Entry(barre, textvariable=fen.var_source_saisie).pack(side="left", fill="x", expand=True, padx=6)
+    tk.Button(barre, text="Utiliser ce chemin", command=fen._choisir_dossier_source).pack(side="left", padx=4)
+    tk.Button(barre, text="Retour au menu", command=fen._quitter).pack(side="right", padx=8)
     try:
         fen.var_cible.trace_add("write", lambda *_: fen._sauver_params())
     except Exception:
         pass
-    ttk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)

@@ -49,16 +49,33 @@ def resoudre_chemin(chemin: str) -> str:
     return str(p)
 
 
+def _shell():
+    shell = ctypes.windll.shell32
+    shell.SHBrowseForFolderW.restype = ctypes.c_void_p
+    shell.SHBrowseForFolderW.argtypes = [ctypes.c_void_p]
+    shell.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    shell.SHGetPathFromIDListW.restype = wintypes.BOOL
+    shell.SHGetNameFromIDList.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_wchar_p)]
+    shell.SHGetNameFromIDList.restype = ctypes.c_long
+    ole = ctypes.windll.ole32
+    ole.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+    return shell
+
+
 def _chemin_pidl(pidl) -> str:
     if not pidl:
         return ""
-    buf = ctypes.create_unicode_buffer(2048)
-    if ctypes.windll.shell32.SHGetPathFromIDListW(pidl, buf) and buf.value:
+    if not isinstance(pidl, int):
+        pidl = ctypes.cast(pidl, ctypes.c_void_p).value or 0
+    if not pidl:
+        return ""
+    shell = _shell()
+    buf = ctypes.create_unicode_buffer(32768)
+    if shell.SHGetPathFromIDListW(ctypes.c_void_p(pidl), buf) and buf.value:
         return buf.value
     ptr = ctypes.c_wchar_p()
-    hr = ctypes.windll.shell32.SHGetNameFromIDList(pidl, SIGDN_FILESYSPATH, ctypes.byref(ptr))
-    if hr == 0 and ptr:
-        valeur = ptr.value or ""
+    if shell.SHGetNameFromIDList(ctypes.c_void_p(pidl), SIGDN_FILESYSPATH, ctypes.byref(ptr)) == 0 and ptr.value:
+        valeur = ptr.value
         ctypes.windll.ole32.CoTaskMemFree(ptr)
         return valeur
     return ""
@@ -72,17 +89,17 @@ class _BROWSEINFO(ctypes.Structure):
         ("lpszTitle", ctypes.c_wchar_p),
         ("ulFlags", wintypes.UINT),
         ("lpfn", ctypes.c_void_p),
-        ("lParam", ctypes.c_long),
+        ("lParam", ctypes.c_void_p),
         ("iImage", ctypes.c_int),
     ]
 
 
-_CB = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_long)
+_CB = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p)
 
 
 @_CB
 def _rappel(_hwnd, msg, lp, _data):
-    if msg == BFFM_SELCHANGED:
+    if msg == BFFM_SELCHANGED and lp:
         chemin = _chemin_pidl(lp)
         if chemin:
             _dernier["chemin"] = chemin
@@ -96,16 +113,28 @@ def dialogue_dossier(titre: str) -> str:
     display = ctypes.create_unicode_buffer(520)
     bi = _BROWSEINFO()
     bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
-    bi.lpszTitle = titre + " — dossiers et fichiers visibles. Le chemin reel est utilise."
-    bi.ulFlags = 0x0040 | 0x0010 | 0x4000 | 0x8000 | 0x0050
+    bi.lpszTitle = titre + " — dossiers et fichiers visibles."
+    bi.ulFlags = 0x0040 | 0x0010 | 0x4000 | 0x8000
     bi.lpfn = ctypes.cast(_rappel, ctypes.c_void_p)
     ctypes.windll.ole32.CoInitialize(None)
-    pidl = ctypes.windll.shell32.SHBrowseForFolderW(ctypes.byref(bi))
-    if not pidl:
+    shell = _shell()
+    pidl = shell.SHBrowseForFolderW(ctypes.byref(bi))
+    chemin = ""
+    if pidl:
+        chemin = _chemin_pidl(pidl) or _dernier["chemin"]
+        ctypes.windll.ole32.CoTaskMemFree(ctypes.c_void_p(pidl))
+    else:
         return ""
-    chemin = _chemin_pidl(pidl) or _dernier["chemin"]
-    ctypes.windll.ole32.CoTaskMemFree(pidl)
-    return resoudre_chemin(chemin)
+    chemin = resoudre_chemin(chemin or _dernier["chemin"])
+    if not chemin or not Path(chemin).exists():
+        messagebox.showerror(
+            "MEDICONF",
+            "Le dossier a ete choisi mais Windows n'a pas renvoye son chemin.\n"
+            f"Nom affiche : {display.value or '?'}\n\n"
+            "Choisissez-le a nouveau dans le selecteur de secours.",
+        )
+        return filedialog.askdirectory(title=titre) or ""
+    return chemin
 
 
 def _enregistrer_cible(fen, chemin: str) -> bool:
@@ -324,6 +353,11 @@ def brancher(fen, menu) -> None:
     tk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)
     fen.zone_drop.bind("<Button-1>", fen._clic_liste)
+    try:
+        fen.filtre_images.set(True)
+        fen.filtre_docs.set(True)
+    except Exception:
+        pass
 
     def relier(w):
         for enfant in w.winfo_children():

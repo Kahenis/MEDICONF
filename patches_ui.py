@@ -1,48 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import ctypes, os
-from ctypes import wintypes
+import os
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from conversion import est_document, est_image, est_pdf
 from explorateur import choisir_type_source
 
-_dernier = {"valeur": ""}
-BFFM_SELCHANGED = 2
+def _dossier(parent, titre):
+    return filedialog.askdirectory(parent=parent, title=titre, mustexist=True) or ""
 
-class _BROWSEINFO(ctypes.Structure):
-    _fields_ = [("hwndOwner", wintypes.HWND), ("pidlRoot", ctypes.c_void_p), ("pszDisplayName", ctypes.c_wchar_p), ("lpszTitle", ctypes.c_wchar_p), ("ulFlags", wintypes.UINT), ("lpfn", ctypes.c_void_p), ("lParam", ctypes.c_long), ("iImage", ctypes.c_int)]
-
-_CB = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p)
-
-@_CB
-def _rappel(hwnd, msg, lp, _data):
-    if msg == BFFM_SELCHANGED and lp:
-        buf = ctypes.create_unicode_buffer(1024)
-        if ctypes.windll.shell32.SHGetPathFromIDListW(lp, buf) and buf.value:
-            _dernier["valeur"] = buf.value
-    return 0
-
-def dialogue_avec_fichiers(titre: str) -> str:
-    if os.name != "nt":
-        return filedialog.askdirectory(title=titre) or ""
-    _dernier["valeur"] = ""
-    display = ctypes.create_unicode_buffer(260)
-    bi = _BROWSEINFO()
-    bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
-    bi.lpszTitle = titre
-    bi.ulFlags = 0x0040 | 0x0010 | 0x4000 | 0x8000 | 0x0050
-    bi.lpfn = ctypes.cast(_rappel, ctypes.c_void_p)
-    ctypes.windll.ole32.CoInitialize(None)
-    pidl = ctypes.windll.shell32.SHBrowseForFolderW(ctypes.byref(bi))
-    if not pidl:
-        return ""
-    buf = ctypes.create_unicode_buffer(1024)
-    ok = ctypes.windll.shell32.SHGetPathFromIDListW(pidl, buf)
-    ctypes.windll.ole32.CoTaskMemFree(pidl)
-    return buf.value if ok and buf.value else _dernier["valeur"]
-
-def _enregistrer_cible(fen, chemin: str) -> bool:
+def _enregistrer_cible(fen, chemin):
     chemin = (chemin or "").strip()
     if not chemin:
         return False
@@ -60,7 +27,9 @@ def _enregistrer_cible(fen, chemin: str) -> bool:
     try:
         fen.params.parcourir_sous_dossiers = fen.var_sous.get()
         fen.params.compression = fen.var_comp.get()
-        fen.params.qualite_compression = int(float(fen.scale_qualite.get()))
+        qualite = getattr(fen, "var_qualite", None) or getattr(fen, "scale_qualite", None)
+        if qualite is not None:
+            fen.params.qualite_compression = int(float(qualite.get()))
         fen.params.conserver_arborescence = fen.var_arbo.get()
         fen.params.conflit = fen.var_conflit.get()
     except Exception:
@@ -70,7 +39,7 @@ def _enregistrer_cible(fen, chemin: str) -> bool:
 
 def appliquer(cls):
     def _parcourir_cible(self):
-        d = dialogue_avec_fichiers("Choisir le dossier cible, fichiers visibles")
+        d = _dossier(self, "Choisir le dossier cible")
         if d:
             _enregistrer_cible(self, d)
     def _valider_cible(self):
@@ -85,13 +54,9 @@ def appliquer(cls):
             if f:
                 self._charger_source(Path(f))
     def _choisir_dossier_source(self):
-        d = dialogue_avec_fichiers("Selectionner le dossier source, fichiers visibles")
-        if not d:
-            return
-        p = Path(d)
-        if p.is_file():
-            p = p.parent
-        self._charger_source(p)
+        d = _dossier(self, "Selectionner le dossier source")
+        if d:
+            self._charger_source(Path(d))
     def _visible(self):
         voir_img = bool(self.filtre_images.get())
         voir_doc = bool(self.filtre_docs.get())
@@ -99,12 +64,10 @@ def appliquer(cls):
         for p in self.fichiers:
             if est_pdf(p):
                 out.append(p)
-            elif est_image(p):
-                if voir_img:
-                    out.append(p)
-            elif est_document(p):
-                if voir_doc:
-                    out.append(p)
+            elif est_image(p) and voir_img:
+                out.append(p)
+            elif est_document(p) and voir_doc:
+                out.append(p)
         return out
     def _rafraichir_liste(self):
         self.zone_drop.delete(0, "end")
@@ -136,6 +99,8 @@ def appliquer(cls):
                 self._convertir_un_fichier(path)
             return
         ancien_c(self, path)
+        if self.source_path:
+            self.lbl_source.configure(text=f"{self.source_path}   --   {self.source_path.name}")
     def _afficher_apercu(self, path):
         self.canvas_apercu.delete("all")
         self.apercu_img = None
@@ -190,14 +155,5 @@ def brancher(fen, menu):
     fen._menu_principal = menu
     tk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)
-    def relier(w):
-        for enfant in w.winfo_children():
-            try: txt = str(enfant.cget("text"))
-            except Exception: txt = ""
-            if txt in ("Images", "Documents"):
-                enfant.configure(command=fen._rafraichir_liste)
-            if enfant.winfo_class() in ("TEntry", "Entry"):
-                enfant.bind("<FocusOut>", lambda _e: _enregistrer_cible(fen, fen.var_cible.get()), add="+")
-                enfant.bind("<Return>", lambda _e: _enregistrer_cible(fen, fen.var_cible.get()), add="+")
-            relier(enfant)
-    fen.after(200, lambda: relier(fen))
+    if fen.params.dossier_cible and not fen.var_cible.get().strip():
+        fen.var_cible.set(fen.params.dossier_cible)

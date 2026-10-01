@@ -4,8 +4,11 @@ import os, zipfile
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from xml.etree import ElementTree
-from conversion import est_document, est_image, est_pdf, ressource_ok
+from conversion import EXTENSIONS_OK, est_document, est_image, est_pdf
 from explorateur import choisir_type_source
+
+def ressource_ok(path):
+    return Path(path).is_file() and Path(path).suffix.lower() in EXTENSIONS_OK
 
 def _dossier(titre):
     return filedialog.askdirectory(title=titre) or ""
@@ -117,16 +120,17 @@ def appliquer(cls):
         fichiers = getattr(self, "_index_visible", None) or self._visible()
         idx = self.zone_drop.nearest(evt.y)
         if idx < 0 or idx >= len(fichiers):
-            return
+            return "break"
         p = fichiers[idx]
         if evt.x < 28:
             key = str(p)
             self.vars_coche[key] = not self.vars_coche.get(key, True)
             self._rafraichir_liste()
-            return
+            return "break"
         self.zone_drop.selection_clear(0, "end")
         self.zone_drop.selection_set(idx)
         self._afficher_apercu(p)
+        return "break"
     def _afficher_apercu(self, path):
         self.canvas_apercu.delete("all")
         self.apercu_img = None
@@ -163,6 +167,12 @@ def appliquer(cls):
     def _sauver_params(self):
         if self.var_cible.get().strip():
             _enregistrer_cible(self, self.var_cible.get())
+        else:
+            try:
+                self.params.parcourir_sous_dossiers = bool(self.var_sous.get())
+                self.params.sauvegarder()
+            except Exception:
+                pass
     def _quitter(self):
         if self.var_cible.get().strip():
             _enregistrer_cible(self, self.var_cible.get())
@@ -194,14 +204,20 @@ def brancher(fen, menu):
     fen._menu_principal = menu
     tk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)
-    fen.zone_drop.bind("<Button-1>", fen._clic_liste)
+    try:
+        fen.zone_drop.bind("<Button-1>", fen._clic_liste)
+    except Exception:
+        pass
     def relier(w):
         for enfant in w.winfo_children():
             try: txt = str(enfant.cget("text"))
             except Exception: txt = ""
-            if "sous-dossier" in txt.lower():
-                enfant.configure(command=fen._sauver_et_rescan)
-            if txt in ("Images", "Documents"):
-                enfant.configure(command=fen._rafraichir_liste)
+            try:
+                if "sous-dossier" in txt.lower():
+                    enfant.configure(command=fen._sauver_et_rescan)
+                if txt in ("Images", "Documents"):
+                    enfant.configure(command=fen._rafraichir_liste)
+            except Exception:
+                pass
             relier(enfant)
     relier(fen)

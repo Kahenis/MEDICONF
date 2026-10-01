@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import os, tkinter as tk
-from tkinter import ttk
+import os, traceback, tkinter as tk
+from tkinter import messagebox, ttk
 CREDIT = "Cr\u00e9ation et D\u00e9veloppement par JF GUILARD"
 
 class MenuDemarrage(tk.Tk):
@@ -32,17 +32,25 @@ class MenuDemarrage(tk.Tk):
             pass
         os._exit(0)
     def _ouvrir_pdf(self):
-        from patches_ui import appliquer, brancher
-        from app import ConvertisseurApp
-        appliquer(ConvertisseurApp)
-        self.withdraw()
         try:
-            fen = ConvertisseurApp(self)
-        except TypeError:
-            fen = ConvertisseurApp()
-        brancher(fen, self)
-        fen.lift()
+            from patches_ui import appliquer, brancher
+            from app import ConvertisseurApp
+            appliquer(ConvertisseurApp)
+            self.withdraw()
+            try:
+                fen = ConvertisseurApp(self)
+            except TypeError:
+                fen = ConvertisseurApp()
+            brancher(fen, self)
+            fen.lift()
+        except Exception:
+            self.deiconify()
+            messagebox.showerror("MEDICONF", traceback.format_exc()[-1200:])
     def _ouvrir_texte(self):
-        from reception import ReceptionApp
-        self.withdraw()
-        ReceptionApp(self)
+        try:
+            from reception import ReceptionApp
+            self.withdraw()
+            ReceptionApp(self)
+        except Exception:
+            self.deiconify()
+            messagebox.showerror("MEDICONF", traceback.format_exc()[-1200:])

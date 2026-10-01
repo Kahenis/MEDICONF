@@ -181,7 +181,9 @@ def _dialogue_com(parent, titre: str, dossiers: bool) -> str:
             return ""
         item = c_void_p()
         if get_result(com, byref(item)) < 0 or not item.value:
-            return ""
+            get_folder = methode(com, 13, WINFUNCTYPE(HRESULT, c_void_p, POINTER(c_void_p)))
+            if get_folder(com, byref(item)) < 0 or not item.value:
+                return ""
         get_name = methode(item, 5, WINFUNCTYPE(HRESULT, c_void_p, DWORD, POINTER(LPWSTR)))
         rel_item = methode(item, 2, WINFUNCTYPE(HRESULT, c_void_p))
         nom = LPWSTR()
@@ -198,26 +200,23 @@ def _dialogue_com(parent, titre: str, dossiers: bool) -> str:
 
 
 def _enregistrer_cible(fen, chemin: str) -> bool:
-    chemin = resoudre_chemin(chemin)
+    chemin = (chemin or "").strip().strip('"')
     if not chemin:
         return False
-    p = Path(chemin)
+    fen.var_cible.set(chemin)
     try:
-        p.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        messagebox.showerror("MEDICONF", f"Dossier cible impossible :\n{e}", parent=fen)
-        return False
-    fen.var_cible.set(str(p))
-    fen.params.dossier_cible = str(p)
-    try:
-        fen.params.parcourir_sous_dossiers = bool(fen.var_sous.get())
-        fen.params.compression = bool(fen.var_comp.get())
-        fen.params.qualite_compression = int(float(fen.var_qualite.get()))
-        fen.params.conserver_arborescence = bool(fen.var_arbo.get())
-        fen.params.conflit = fen.var_conflit.get()
+        fen.update_idletasks()
     except Exception:
         pass
-    fen.params.sauvegarder()
+    fen.params.dossier_cible = chemin
+    try:
+        fen.params.sauvegarder()
+    except Exception:
+        pass
+    try:
+        fen._log(f"Dossier cible : {chemin}")
+    except Exception:
+        pass
     return True
 
 
@@ -248,12 +247,19 @@ def _coche(widget) -> bool:
 def appliquer(cls) -> None:
     def _parcourir_cible(self) -> None:
         d = dialogue_explorateur(self, "Choisir le dossier cible", True)
-        if d:
-            _enregistrer_cible(self, d)
+        if not d:
+            messagebox.showwarning("MEDICONF", "Aucun dossier n'a été renvoyé.", parent=self)
+            return
+        self._dernier_cible = d
+        _enregistrer_cible(self, d)
 
     def _valider_cible(self) -> None:
-        if _enregistrer_cible(self, self.var_cible.get()):
-            messagebox.showinfo("MEDICONF", f"Dossier cible enregistré :\n{self.var_cible.get()}", parent=self)
+        d = self.var_cible.get().strip() or getattr(self, "_dernier_cible", "")
+        if not d:
+            messagebox.showwarning("MEDICONF", "Choisissez d'abord un dossier avec Parcourir.", parent=self)
+            return
+        if _enregistrer_cible(self, d):
+            messagebox.showinfo("MEDICONF", f"Dossier cible enregistré :\n{d}", parent=self)
 
     def _parcourir_source(self) -> None:
         type_sel = choisir_type_source(self)
@@ -277,18 +283,21 @@ def appliquer(cls) -> None:
 
     def _scanner(self, racine: Path):
         fichiers = []
-        racine = Path(resoudre_chemin(str(racine)))
-        profond = self._sous_actif()
-        if profond:
-            for dirpath, _dirs, names in os.walk(racine):
-                for n in names:
-                    p = Path(dirpath) / n
-                    if ressource_ok(p):
+        racine = Path(racine)
+        profond = bool(self.var_sous.get()) or self._sous_actif()
+        try:
+            if profond:
+                for dirpath, _dirs, names in os.walk(racine):
+                    for n in names:
+                        p = Path(dirpath) / n
+                        if p.is_file():
+                            fichiers.append(p)
+            else:
+                for p in racine.iterdir():
+                    if p.is_file():
                         fichiers.append(p)
-        else:
-            for p in racine.iterdir():
-                if p.is_file() and ressource_ok(p):
-                    fichiers.append(p)
+        except Exception as e:
+            self._log(f"Lecture impossible : {e}")
         fichiers.sort(key=lambda x: str(x).lower())
         return fichiers
 
@@ -318,34 +327,18 @@ def appliquer(cls) -> None:
         return voir_img, voir_doc
 
     def _visible(self):
-        voir_img, voir_doc = True, True
-        if getattr(self, "_filtres_touches", False):
-            voir_img, voir_doc = self._filtres_actifs()
-        out = []
-        for p in self.fichiers:
-            if est_pdf(p):
-                out.append(p)
-            elif est_image(p) and voir_img:
-                out.append(p)
-            elif est_document(p) and voir_doc:
-                out.append(p)
-            elif p.suffix.lower() in EXTENSIONS_OK:
-                out.append(p)
-        return out
+        return list(self.fichiers)
 
     def _rafraichir_liste(self) -> None:
-        try:
-            self.zone_drop.delete(0, "end")
-            self._index_visible = self._visible()
-            for p in self._index_visible:
-                key = str(p)
-                if key not in self.vars_coche:
-                    self.vars_coche[key] = True
-                marque = "\u2611" if self.vars_coche.get(key, True) else "\u2610"
-                self.zone_drop.insert("end", f" {marque}  {self._libelle(p)}")
-            self._log(f"Liste : {len(self._index_visible)} fichier(s) affiche(s)")
-        except Exception as e:
-            self._log(f"Liste impossible : {e}")
+        self.zone_drop.delete(0, "end")
+        self._index_visible = list(self.fichiers)
+        for p in self._index_visible:
+            key = str(p)
+            if key not in self.vars_coche:
+                self.vars_coche[key] = True
+            marque = "\u2611" if self.vars_coche.get(key, True) else "\u2610"
+            self.zone_drop.insert("end", f" {marque}  {self._libelle(p)}")
+        self._log(f"Liste : {len(self._index_visible)} fichier(s)")
 
     ancien = cls._libelle
 
@@ -417,10 +410,12 @@ def appliquer(cls) -> None:
             return
         self.lbl_source.configure(text=f"{path}   —   {path.name}")
         self.fichiers = self._scanner(path)
-        self._rafraichir_liste()
-        self._log(f"Source : {path} — {len(self.fichiers)} fichier(s)")
-        if not self.fichiers:
-            messagebox.showinfo("MEDICONF", "Aucun fichier image, document ou PDF dans ce dossier.")
+        self.zone_drop.delete(0, "end")
+        self._index_visible = list(self.fichiers)
+        for p in self.fichiers:
+            self.vars_coche[str(p)] = True
+            self.zone_drop.insert("end", f" \u2611  {self._libelle(p)}")
+        self._log(f"Source : {path} — {len(self.fichiers)} fichier(s), sous-dossiers : {'oui' if self.var_sous.get() else 'non'}")
 
     def _quitter(self) -> None:
         if self.var_cible.get().strip():
@@ -476,12 +471,8 @@ def brancher(fen, menu) -> None:
                 if "sous-dossier" in txt:
                     enfant.configure(command=fen._sauver_et_rescan)
                     enfant.bind("<ButtonRelease-1>", lambda _e: fen._sauver_et_rescan(), add="+")
-                if txt in ("images", "documents"):
-                    def clic_filtre(_e=None, f=fen):
-                        f._filtres_touches = True
-                        f.after(80, f._rafraichir_liste)
-                    enfant.configure(command=clic_filtre)
-                    enfant.bind("<ButtonRelease-1>", clic_filtre, add="+")
+                if txt in ("images", "documents", "afficher :"):
+                    enfant.destroy()
             except Exception:
                 pass
             relier(enfant)

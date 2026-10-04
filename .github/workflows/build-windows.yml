@@ -36,17 +36,7 @@ jobs:
         run: python verifier_tk.py --apres
 
       - name: Zip du dossier
-        shell: pwsh
-        run: |
-          python -c "import zipfile; from pathlib import Path; z=zipfile.ZipFile('MEDICONF-windows.zip','w',zipfile.ZIP_DEFLATED); root=Path('dist/MEDICONF');
-[ z.write(p, Path('MEDICONF')/p.relative_to(root)) for p in root.rglob('*') if p.is_file() ]; z.close(); noms=zipfile.ZipFile('MEDICONF-windows.zip').namelist();
-print('tk.tcl dans le zip', any(n.endswith('_tk_data/tk.tcl') or n.endswith('_tk_data\\tk.tcl') for n in noms));
-raise SystemExit(0 if any('tk.tcl' in n and 'init.tcl' in ''.join(noms) for n in noms) else 1)"
-
-      - name: Zip du dossier
-        shell: pwsh
-        run: |
-          Compress-Archive -Path dist\MEDICONF -DestinationPath MEDICONF-windows.zip -Force
+        run: python faire_zip.py
 
       - name: Publier
         uses: actions/upload-artifact@v4

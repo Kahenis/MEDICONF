@@ -46,6 +46,8 @@ class ConvertisseurApp(tk.Tk):
         self.source_path: Path | None = None
         self.fichiers: list[Path] = []
         self.vars_coche: dict[str, bool] = {}
+        self.etats_fichier: dict[str, str] = {}
+        self.labels_nom: dict[str, tk.Label] = {}
         self.apercu_img = None
         self.conversion_en_cours = False
         self.filtre_images = tk.BooleanVar(value=True)
@@ -72,6 +74,7 @@ class ConvertisseurApp(tk.Tk):
         ttk.Label(self, text=APP_TITRE, style="Titre.TLabel").pack(anchor="w", padx=16, pady=(12, 4))
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self.notebook = nb
         self.onglet_principal = ttk.Frame(nb)
         self.onglet_params = ttk.Frame(nb)
         nb.add(self.onglet_principal, text="  Conversion  ")
@@ -235,7 +238,7 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_apercu_info.pack(fill="x", pady=(6, 0))
         actions = ttk.Frame(p)
         actions.pack(fill="x", padx=12, pady=4)
-        self.btn_convertir = ttk.Button(actions, text="Tout convertir", command=self._tout_convertir)
+        self.btn_convertir = ttk.Button(actions, text="Convertir", command=self._tout_convertir)
         self.btn_convertir.pack(side="left")
         ttk.Button(actions, text="Effacer la s\u00e9lection", command=self._effacer).pack(side="left", padx=8)
         ttk.Button(actions, text="Ouvrir le dossier cible", command=self._ouvrir_cible).pack(side="left")
@@ -248,6 +251,7 @@ class ConvertisseurApp(tk.Tk):
         self.journal.configure(yscrollcommand=jsb.set)
         self.journal.pack(side="left", fill="both", expand=True)
         jsb.pack(side="right", fill="y")
+        self.journal.tag_configure("erreur", font=("Consolas", 9, "bold"), foreground="#b91c1c")
         self.journal.configure(state="disabled")
         self._log("Parcourir un fichier ou s\u00e9lectionner un dossier source pour commencer.")
 
@@ -324,8 +328,10 @@ class ConvertisseurApp(tk.Tk):
             def bascule(v=var, c=cle):
                 self.vars_coche[c] = bool(v.get())
             ttk.Checkbutton(ligne, variable=var, command=bascule).pack(side="left")
-            nom = tk.Label(ligne, text=p.name, font=("Segoe UI", 10), fg="#1f4e79", bg="#ffffff", cursor="hand2")
+            couleur = {"ok": "#15803d", "erreur": "#b91c1c"}.get(self.etats_fichier.get(cle, ""), "#1f4e79")
+            nom = tk.Label(ligne, text=p.name, font=("Segoe UI", 10), fg=couleur, bg="#ffffff", cursor="hand2")
             nom.pack(side="left", padx=(4, 8))
+            self.labels_nom[cle] = nom
             chemin_lbl = tk.Label(ligne, text=str(p), font=("Segoe UI", 8), fg="#6b7280", bg="#ffffff", cursor="hand2")
             chemin_lbl.pack(side="left")
             nom._chemin_source = str(p)
@@ -457,15 +463,37 @@ class ConvertisseurApp(tk.Tk):
             self._log(f"ERREUR  {source.name} : {e}")
             messagebox.showerror(APP_TITRE, f"Conversion impossible :\n{e}")
 
+    def _marquer(self, source: Path, etat: str) -> None:
+        cle = str(source)
+        self.etats_fichier[cle] = etat
+        label = self.labels_nom.get(cle)
+        if label is not None:
+            try:
+                label.configure(fg="#15803d" if etat == "ok" else "#b91c1c")
+            except Exception:
+                pass
+
+    def _ouvrir_parametres(self) -> None:
+        try:
+            self.notebook.select(self.onglet_params)
+        except Exception:
+            pass
+        self._log("Choisissez un dossier cible dans Paramètres.")
+
     def _tout_convertir(self) -> None:
         if self.conversion_en_cours:
             return
+        cible_txt = self.var_cible.get().strip() or self.params.dossier_cible
+        if not cible_txt:
+            self._ouvrir_parametres()
+            return
         fichiers = self._selectionnes()
         if not fichiers:
-            messagebox.showinfo(APP_TITRE, "Aucun fichier coch\u00e9.")
+            messagebox.showinfo(APP_TITRE, "Aucun fichier coché.")
             return
         cible = self._cible_ok()
         if cible is None:
+            self._ouvrir_parametres()
             return
         if not messagebox.askyesno(APP_TITRE, f"Convertir {len(fichiers)} fichier(s) vers :\n{cible} ?"):
             return
@@ -481,20 +509,21 @@ class ConvertisseurApp(tk.Tk):
                 try:
                     warn = convertir_fichier(source, dest, self.var_comp.get(), int(self.var_qualite.get()))
                     ok += 1
-                    msg = f"OK  {self._libelle(source)}  \u2192  {dest.name}"
+                    msg = f"OK  {source.name}  →  {dest.name}"
+                    if source.suffix.lower() == ".pdf":
+                        msg += "  (copie seule)"
                     if warn:
                         msg += f"  ({warn})"
-                    self.after(0, lambda m=msg: self._log(m))
+                    self.after(0, lambda m=msg, s=source: (self._log(m), self._marquer(s, "ok")))
                 except Exception as e:
                     ko += 1
-                    self.after(0, lambda s=source, err=str(e): self._log(f"ERREUR  {s.name} : {err}"))
+                    self.after(0, lambda s=source, err=str(e): (self._log(f"ERREUR  {s.name} : {err}", erreur=True), self._marquer(s, "erreur")))
                 self.after(0, lambda v=i: self.progress.configure(value=v))
 
             def fin():
                 self.conversion_en_cours = False
                 self.btn_convertir.configure(state="normal")
-                self._log(f"Termin\u00e9 : {ok} r\u00e9ussi(s), {ko} \u00e9chec(s).")
-                messagebox.showinfo(APP_TITRE, f"Conversion termin\u00e9e.\nR\u00e9ussis : {ok}\n\u00c9checs : {ko}")
+                self._log(f"Terminé : {ok} réussi(s), {ko} échec(s).")
 
             self.after(0, fin)
 
@@ -503,7 +532,8 @@ class ConvertisseurApp(tk.Tk):
     def _effacer(self) -> None:
         self.source_path = None
         self.fichiers = []
-        self.vars_coche = {}
+        self.etats_fichier = {}
+        self.labels_nom = {}
         self.lbl_source.configure(text="(aucun fichier ni dossier)")
         self._rafraichir_liste()
         self.canvas_apercu.delete("all")
@@ -524,9 +554,12 @@ class ConvertisseurApp(tk.Tk):
         else:
             os.system(f'xdg-open "{d}"')
 
-    def _log(self, msg: str) -> None:
+    def _log(self, msg: str, erreur: bool = False) -> None:
         self.journal.configure(state="normal")
-        self.journal.insert("end", msg + "\n")
+        if erreur:
+            self.journal.insert("end", msg + "\n", "erreur")
+        else:
+            self.journal.insert("end", msg + "\n")
         self.journal.see("end")
         self.journal.configure(state="disabled")
 

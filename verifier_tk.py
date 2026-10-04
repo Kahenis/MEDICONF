@@ -59,6 +59,8 @@ def apres():
         sys.exit(1)
     poser(tcl, dest / "_tcl_data")
     poser(tk, dest / "_tk_data")
+    poser(tcl, Path("dist/MEDICONF") / "_tcl_data")
+    poser(tk, Path("dist/MEDICONF") / "_tk_data")
     init_tcl = dest / "_tcl_data" / "init.tcl"
     tk_tcl = dest / "_tk_data" / "tk.tcl"
     print("APRES compilation")

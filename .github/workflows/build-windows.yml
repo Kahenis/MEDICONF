@@ -32,7 +32,7 @@ jobs:
           python ajuster_spec.py
           pyinstaller --noconfirm --clean MEDICONF.spec
 
-      - name: Verifier Tcl/Tk dans le dossier compile
+      - name: Installer _tk_data
         run: python verifier_tk.py --apres
 
       - name: Zip du dossier

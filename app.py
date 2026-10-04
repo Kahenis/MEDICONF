@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 import apercu
+import scan_source
 from conversion import (
     EXTENSIONS_OK,
     convertir_fichier,
@@ -153,11 +154,15 @@ class ConvertisseurApp(tk.Tk):
         messagebox.showinfo(APP_TITRE, "Dossier cible enregistré :\n" + d, parent=self)
 
     def _basculer_sous_dossiers(self) -> None:
+        self.after(80, self._appliquer_sous_dossiers)
+
+    def _appliquer_sous_dossiers(self) -> None:
+        actif = self._sous_dossiers_demandes()
         self._sauver_params()
         if getattr(self, "source_path", None) and Path(self.source_path).is_dir():
             self.fichiers = self._scanner(self.source_path)
             self._rafraichir_liste()
-            self._log(str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if self.var_sous.get() else "non"))
+            self._log(str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if actif else "non"))
 
     def _valider_cible(self) -> None:
         d = self.var_cible.get().strip()
@@ -270,23 +275,30 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_source.configure(text=f"{path}   —   {path.name}")
         self.fichiers = self._scanner(path)
         self._rafraichir_liste()
-        self._log("Source : " + str(path) + " — " + str(len(self.fichiers)) + " fichier(s)")
+        self._log("Source : " + str(path) + " — " + str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if self._sous_dossiers_demandes() else "non"))
+
+    def _sous_dossiers_demandes(self) -> bool:
+        """Lit la case cochée à l'écran, pas seulement la variable."""
+        def walk(w):
+            for enfant in w.winfo_children():
+                try:
+                    if "sous-dossier" in str(enfant.cget("text")).lower():
+                        return bool(enfant.instate(["selected"]))
+                except Exception:
+                    pass
+                trouve = walk(enfant)
+                if trouve is not None:
+                    return trouve
+            return None
+        etat = walk(self)
+        if etat is None:
+            etat = bool(self.var_sous.get())
+        if bool(self.var_sous.get()) != etat:
+            self.var_sous.set(etat)
+        return etat
 
     def _scanner(self, racine: Path) -> list[Path]:
-        fichiers: list[Path] = []
-        racine = Path(racine)
-        if self.var_sous.get():
-            for dirpath, _dns, names in os.walk(racine):
-                for n in names:
-                    p = Path(dirpath) / n
-                    if apercu.est_convertible(p):
-                        fichiers.append(p)
-        else:
-            for enfant in racine.iterdir():
-                if apercu.est_convertible(enfant):
-                    fichiers.append(enfant)
-        fichiers.sort(key=lambda x: str(x).lower())
-        return fichiers
+        return scan_source.lister(racine, self._sous_dossiers_demandes())
 
     def _visible(self) -> list[Path]:
         return list(self.fichiers)

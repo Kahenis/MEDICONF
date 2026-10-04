@@ -468,8 +468,7 @@ def brancher(fen, menu) -> None:
                 txt = ""
             try:
                 if "sous-dossier" in txt:
-                    enfant.configure(command=fen._sauver_et_rescan)
-                    enfant.bind("<ButtonRelease-1>", lambda _e: fen.after(80, fen._sauver_et_rescan), add="+")
+                    enfant.configure(command=fen._basculer_sous_dossiers)
                 if txt in ("images", "documents", "afficher :"):
                     a_retirer.append(enfant)
             except Exception:

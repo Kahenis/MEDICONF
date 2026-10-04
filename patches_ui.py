@@ -109,14 +109,7 @@ def _rappel(_hwnd, msg, lp, _data):
 def dialogue_explorateur(parent, titre: str, dossiers: bool = True, afficher_fichiers: bool = False) -> str:
     """Dialogue natif de l'Explorateur Windows (IFileDialog) : reseau, lecteurs, chemin reel."""
     if afficher_fichiers and dossiers and os.name == "nt":
-        chemin = _dialogue_com(parent, titre, False, forcer_tous_fichiers=True)
-        if chemin:
-            p = Path(chemin)
-            if p.is_file():
-                p = p.parent
-            if p.exists():
-                return str(p)
-        return ""
+        return _dialogue_selection_dossier(parent, titre)
     if os.name != "nt":
         if dossiers:
             return filedialog.askdirectory(title=titre, parent=parent) or ""
@@ -130,42 +123,166 @@ def dialogue_explorateur(parent, titre: str, dossiers: bool = True, afficher_fic
         return filedialog.askopenfilename(title=titre, parent=parent) or ""
 
 
-def _dialogue_dossier_avec_fichiers(parent, titre: str) -> str:
-    """Explorateur : dossiers et tous les fichiers visibles. Le choix reste un dossier."""
-    dernier = {"chemin": ""}
+def _dialogue_selection_dossier(parent, titre: str) -> str:
+    """Fichiers visibles. Double-clic = entrer. Sélectionner = retenir le dossier affiché."""
+    import uuid
+    from ctypes import POINTER, WINFUNCTYPE, byref, c_void_p, cast, sizeof, windll, HRESULT, c_uint
+    from ctypes.wintypes import DWORD, HWND, LPWSTR, BOOL
 
-    @_CB
-    def rappel(_hwnd, msg, lp, _data):
-        if msg == BFFM_SELCHANGED and lp:
-            chemin = _chemin_pidl(lp)
-            if chemin:
-                dernier["chemin"] = chemin
-        return 0
+    choix = {"chemin": ""}
+    ole32 = windll.ole32
+    ole32.CoInitialize.argtypes = [c_void_p]
+    ole32.CoInitialize.restype = HRESULT
+    ole32.CoCreateInstance.argtypes = [c_void_p, c_void_p, DWORD, c_void_p, POINTER(c_void_p)]
+    ole32.CoCreateInstance.restype = HRESULT
+    ole32.CoTaskMemFree.argtypes = [c_void_p]
+    hr = ole32.CoInitialize(None)
+    if hr < 0 and (hr & 0xFFFFFFFF) != 0x80010106:
+        return _dialogue_com(parent, titre, True)
 
-    display = ctypes.create_unicode_buffer(520)
-    bi = _BROWSEINFO()
+    def methode(obj, index, proto):
+        vtbl = cast(obj, POINTER(c_void_p))[0]
+        return cast(vtbl + index * sizeof(c_void_p), POINTER(proto))[0]
+
+    clsid = (ctypes.c_byte * 16).from_buffer_copy(uuid.UUID("{DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7}").bytes_le)
+    iid = (ctypes.c_byte * 16).from_buffer_copy(uuid.UUID("{D57C7288-D4AD-4768-BE02-9D969532D960}").bytes_le)
+    com = c_void_p()
+    if ole32.CoCreateInstance(clsid, None, 1, iid, byref(com)) < 0 or not com.value:
+        return _dialogue_com(parent, titre, True)
+
+    release = methode(com, 2, WINFUNCTYPE(HRESULT, c_void_p))
+    show = methode(com, 3, WINFUNCTYPE(HRESULT, c_void_p, HWND))
+    set_types = methode(com, 4, WINFUNCTYPE(HRESULT, c_void_p, c_uint, c_void_p))
+    advise = methode(com, 7, WINFUNCTYPE(HRESULT, c_void_p, c_void_p, POINTER(DWORD)))
+    set_options = methode(com, 9, WINFUNCTYPE(HRESULT, c_void_p, DWORD))
+    get_options = methode(com, 10, WINFUNCTYPE(HRESULT, c_void_p, POINTER(DWORD)))
+    get_folder = methode(com, 13, WINFUNCTYPE(HRESULT, c_void_p, POINTER(c_void_p)))
+    set_title = methode(com, 17, WINFUNCTYPE(HRESULT, c_void_p, LPWSTR))
+    set_ok = methode(com, 18, WINFUNCTYPE(HRESULT, c_void_p, LPWSTR))
+    close_dlg = methode(com, 23, WINFUNCTYPE(HRESULT, c_void_p, HRESULT))
+    qi = methode(com, 0, WINFUNCTYPE(HRESULT, c_void_p, c_void_p, POINTER(c_void_p)))
     try:
-        bi.hwndOwner = parent.winfo_id()
-    except Exception:
-        bi.hwndOwner = None
-    bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
-    bi.lpszTitle = titre + " — fichiers affichés pour repérage, le dossier sera enregistré."
-    bi.ulFlags = 0x0010 | 0x0040 | 0x4000 | 0x8000
-    bi.lpfn = ctypes.cast(rappel, ctypes.c_void_p)
-    ctypes.windll.ole32.CoInitialize(None)
-    shell = _shell()
-    pidl = shell.SHBrowseForFolderW(ctypes.byref(bi))
-    chemin = ""
-    if pidl:
-        chemin = _chemin_pidl(pidl) or dernier["chemin"]
-        ctypes.windll.ole32.CoTaskMemFree(ctypes.c_void_p(pidl))
-    chemin = chemin or dernier["chemin"]
-    if not chemin:
-        return ""
-    p = Path(chemin)
-    if p.is_file():
-        p = p.parent
-    return str(p) if p.exists() else ""
+        flags = DWORD()
+        get_options(com, byref(flags))
+        flags.value |= 0x40 | 0x800 | 0x1000
+        flags.value &= ~0x20
+        set_options(com, flags)
+        class _Filtre(ctypes.Structure):
+            _fields_ = [("pszName", ctypes.c_wchar_p), ("pszSpec", ctypes.c_wchar_p)]
+        spec = _Filtre("Tous les fichiers (*.*)", "*.*")
+        set_types(com, 1, ctypes.byref(spec))
+        set_title(com, titre + " — double-clic pour entrer, Sélectionner pour choisir ce dossier")
+        set_ok(com, "Ouvrir")
+
+        iid_custom = (ctypes.c_byte * 16).from_buffer_copy(uuid.UUID("{e6fdd21a-163f-4975-9c8c-a69f1ba37034}").bytes_le)
+        custom = c_void_p()
+        if qi(com, iid_custom, byref(custom)) >= 0 and custom.value:
+            add_button = methode(custom, 5, WINFUNCTYPE(HRESULT, c_void_p, DWORD, LPWSTR))
+            prominent = methode(custom, 28, WINFUNCTYPE(HRESULT, c_void_p, DWORD))
+            add_button(custom, DWORD(101), "Sélectionner")
+            prominent(custom, DWORD(101))
+            methode(custom, 2, WINFUNCTYPE(HRESULT, c_void_p))(custom)
+
+        def nom_item(item) -> str:
+            if not item:
+                return ""
+            get_name = methode(item, 5, WINFUNCTYPE(HRESULT, c_void_p, DWORD, POINTER(LPWSTR)))
+            rel = methode(item, 2, WINFUNCTYPE(HRESULT, c_void_p))
+            nom = LPWSTR()
+            try:
+                if get_name(item, DWORD(0x80058000), byref(nom)) < 0 or not nom.value:
+                    return ""
+                return nom.value
+            finally:
+                if nom:
+                    ole32.CoTaskMemFree(cast(nom, c_void_p))
+                rel(item)
+
+        def retenir_dossier():
+            item = c_void_p()
+            if get_folder(com, byref(item)) < 0:
+                return
+            chemin = nom_item(item.value)
+            if chemin:
+                p = Path(chemin)
+                choix["chemin"] = str(p.parent if p.is_file() else p)
+                close_dlg(com, HRESULT(0))
+
+        @ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p, POINTER(c_void_p))
+        def events_qi(_this, riid, out):
+            out[0] = ctypes.addressof(events)
+            return 0
+
+        @ctypes.WINFUNCTYPE(ctypes.c_ulong, c_void_p)
+        def events_add(_this):
+            return 1
+
+        @ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p, DWORD)
+        def on_button(_this, _custom, ctl):
+            if ctl == 101:
+                retenir_dossier()
+            return 0
+
+        @ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p)
+        def on_file_ok(_this, _dlg):
+            retenir_dossier()
+            return 0
+
+        fn_qi = events_qi
+        fn_add = events_add
+        fn_rel = events_add
+        fn_ok = on_file_ok
+        fn_ignore = ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p)(lambda *_a: 0)
+        fn_ignore2 = ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p, c_void_p)(lambda *_a: 0)
+        fn_button = on_button
+        fn_ctl = ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p, DWORD, DWORD)(lambda *_a: 0)
+        fn_check = ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p, DWORD, BOOL)(lambda *_a: 0)
+        vtbl_events = (c_void_p * 10)(
+            cast(fn_qi, c_void_p), cast(fn_add, c_void_p), cast(fn_rel, c_void_p),
+            cast(fn_ok, c_void_p), cast(fn_ignore2, c_void_p), cast(fn_ignore, c_void_p),
+            cast(fn_ignore, c_void_p), cast(fn_ignore2, c_void_p), cast(fn_ignore, c_void_p),
+            cast(fn_ignore2, c_void_p),
+        )
+        vtbl_ctrl = (c_void_p * 7)(
+            cast(fn_qi, c_void_p), cast(fn_add, c_void_p), cast(fn_rel, c_void_p),
+            cast(fn_ctl, c_void_p), cast(fn_button, c_void_p), cast(fn_check, c_void_p),
+            cast(fn_ctl, c_void_p),
+        )
+        events = c_void_p(ctypes.addressof(vtbl_events))
+        events = ctypes.pointer(c_void_p(ctypes.addressof(vtbl_events)))
+        ctrl = ctypes.pointer(c_void_p(ctypes.addressof(vtbl_ctrl)))
+        def events_qi_reel(_this, riid, out):
+            try:
+                voulu = uuid.UUID(bytes_le=bytes(cast(riid, POINTER(ctypes.c_byte * 16)).contents))
+            except Exception:
+                out[0] = 0
+                return HRESULT(0x80004002)
+            if voulu in (uuid.UUID("{973510db-7d7f-452b-8975-74a85828d354}"), uuid.UUID("{00000000-0000-0000-C000-000000000046}")):
+                out[0] = ctypes.addressof(events.contents)
+            elif voulu == uuid.UUID("{36116642-D713-4b97-9B83-7484A9D00433}"):
+                out[0] = ctypes.addressof(ctrl.contents)
+            else:
+                out[0] = 0
+                return HRESULT(0x80004002)
+            return 0
+        fn_qi = ctypes.WINFUNCTYPE(HRESULT, c_void_p, c_void_p, POINTER(c_void_p))(events_qi_reel)
+        vtbl_events[0] = cast(fn_qi, c_void_p)
+        vtbl_ctrl[0] = cast(fn_qi, c_void_p)
+        cookie = DWORD()
+        advise(com, events, byref(cookie))
+        hwnd = 0
+        try:
+            hwnd = int(parent.winfo_id())
+        except Exception:
+            hwnd = 0
+        show(com, HWND(hwnd))
+        try:
+            windll.user32.EnableWindow(HWND(hwnd), 1)
+        except Exception:
+            pass
+        return choix["chemin"]
+    finally:
+        release(com)
 
 
 def _dialogue_com(parent, titre: str, dossiers: bool, forcer_tous_fichiers: bool = False) -> str:

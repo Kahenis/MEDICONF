@@ -436,9 +436,6 @@ def appliquer(cls) -> None:
 
     cls._parcourir_source = _parcourir_source
     cls._choisir_dossier_source = _choisir_dossier_source
-    cls._libelle = _libelle
-    cls._clic_liste = _clic_liste
-    cls._afficher_apercu = _afficher_apercu
     cls._quitter = _quitter
 
 

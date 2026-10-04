@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 
+import apercu
 from conversion import (
     EXTENSIONS_OK,
     convertir_fichier,
@@ -208,12 +209,15 @@ class ConvertisseurApp(tk.Tk):
         gauche.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         gauche.rowconfigure(0, weight=1)
         gauche.columnconfigure(0, weight=1)
-        self.zone_drop = tk.Listbox(gauche, selectmode="browse", font=("Segoe UI", 10), activestyle="dotbox", bg=COULEUR_ZONE)
+        self.zone_drop = tk.Canvas(gauche, bg=COULEUR_ZONE, highlightthickness=0)
         sb = ttk.Scrollbar(gauche, orient="vertical", command=self.zone_drop.yview)
         self.zone_drop.configure(yscrollcommand=sb.set)
         self.zone_drop.grid(row=0, column=0, sticky="nsew")
         sb.grid(row=0, column=1, sticky="ns")
-        self.zone_drop.bind("<Button-1>", self._clic_liste)
+        self.liste_frame = ttk.Frame(self.zone_drop)
+        self.zone_drop.create_window((0, 0), window=self.liste_frame, anchor="nw", tags="liste")
+        self.liste_frame.bind("<Configure>", lambda _e: self.zone_drop.configure(scrollregion=self.zone_drop.bbox("all")))
+        self.zone_drop.bind("<Configure>", lambda e: self.zone_drop.itemconfigure("liste", width=e.width))
         droite = ttk.LabelFrame(corps, text=" Aper\u00e7u ", padding=6)
         droite.grid(row=0, column=1, sticky="nsew")
         self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0)
@@ -275,11 +279,11 @@ class ConvertisseurApp(tk.Tk):
             for dirpath, _dns, names in os.walk(racine):
                 for n in names:
                     p = Path(dirpath) / n
-                    if p.is_file():
+                    if apercu.est_convertible(p):
                         fichiers.append(p)
         else:
             for enfant in racine.iterdir():
-                if enfant.is_file():
+                if apercu.est_convertible(enfant):
                     fichiers.append(enfant)
         fichiers.sort(key=lambda x: str(x).lower())
         return fichiers
@@ -288,21 +292,29 @@ class ConvertisseurApp(tk.Tk):
         return list(self.fichiers)
 
     def _libelle(self, p: Path) -> str:
-        if self.source_path and self.source_path.is_dir() and self.var_sous.get():
-            try:
-                return str(p.relative_to(self.source_path))
-            except ValueError:
-                return p.name
         return p.name
 
     def _rafraichir_liste(self) -> None:
-        self.zone_drop.delete(0, "end")
-        for p in self._visible():
-            key = str(p)
-            if key not in self.vars_coche:
-                self.vars_coche[key] = True
-            marque = "\u2611" if self.vars_coche.get(key, True) else "\u2610"
-            self.zone_drop.insert("end", f" {marque}  {self._libelle(p)}")
+        for enfant in self.liste_frame.winfo_children():
+            enfant.destroy()
+        self._index_visible = list(self._visible())
+        for p in self._index_visible:
+            cle = str(p)
+            if cle not in self.vars_coche:
+                self.vars_coche[cle] = True
+            var = tk.BooleanVar(value=self.vars_coche[cle])
+            ligne = ttk.Frame(self.liste_frame)
+            ligne.pack(fill="x", anchor="w", pady=2)
+            def bascule(v=var, c=cle):
+                self.vars_coche[c] = bool(v.get())
+            ttk.Checkbutton(ligne, variable=var, command=bascule).pack(side="left")
+            nom = tk.Label(ligne, text=p.name, font=("Segoe UI", 10), fg="#1f4e79", bg="#ffffff", cursor="hand2")
+            nom.pack(side="left", padx=(4, 8))
+            tk.Label(ligne, text=str(p), font=("Segoe UI", 8), fg="#6b7280", bg="#ffffff").pack(side="left")
+            nom.bind("<Button-1>", lambda _e, chemin=p: self._afficher_apercu(chemin))
+        self.zone_drop.update_idletasks()
+        self.zone_drop.configure(scrollregion=self.zone_drop.bbox("all"))
+        self._log(str(len(self._index_visible)) + " fichier(s) affiché(s)" + (" — sous-dossiers" if self.var_sous.get() else ""))
 
     def _clic_liste(self, event) -> str:
         idx = self.zone_drop.nearest(event.y)
@@ -323,36 +335,16 @@ class ConvertisseurApp(tk.Tk):
     def _afficher_apercu(self, path: Path) -> None:
         self.canvas_apercu.delete("all")
         self.apercu_img = None
-        self.lbl_apercu_info.configure(text=f"{path.name}  \u2014  {self._taille(path)}")
+        self.lbl_apercu_info.configure(text=path.name + "  —  " + str(path))
         self.canvas_apercu.update_idletasks()
-        cw = max(self.canvas_apercu.winfo_width(), 120)
-        ch = max(self.canvas_apercu.winfo_height(), 120)
-        if est_image(path):
-            try:
-                im = Image.open(path)
-                im.thumbnail((cw - 16, ch - 16), Image.Resampling.LANCZOS)
-                self.apercu_img = ImageTk.PhotoImage(im)
-                self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
-            except Exception as e:
-                self.canvas_apercu.create_text(cw // 2, ch // 2, text=f"Aper\u00e7u impossible\n{e}", fill="#444", font=("Segoe UI", 10))
-            return
-        extra = path.name
+        cw = max(self.canvas_apercu.winfo_width(), 180)
+        ch = max(self.canvas_apercu.winfo_height(), 180)
         try:
-            if path.suffix.lower() == ".txt":
-                extra = path.read_text(encoding="utf-8", errors="replace")[:800]
-            elif path.suffix.lower() == ".docx":
-                import zipfile
-                import xml.etree.ElementTree as ET
-                ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-                with zipfile.ZipFile(path) as z:
-                    root = ET.fromstring(z.read("word/document.xml"))
-                lignes = ["".join(t.text or "" for t in para.iter(ns + "t")) for para in root.iter(ns + "p")]
-                extra = "\n".join(lignes)[:700]
-            else:
-                extra = f"Document {path.suffix.upper()}\n\nAper\u00e7u visuel indisponible.\nLibreOffice sera utilis\u00e9 s'il est install\u00e9."
+            im = apercu.miniature(path, cw - 12, ch - 12)
+            self.apercu_img = ImageTk.PhotoImage(im)
+            self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
         except Exception as e:
-            extra = str(e)
-        self.canvas_apercu.create_text(12, 12, anchor="nw", text=extra, width=cw - 24, fill="#222", font=("Segoe UI", 9))
+            self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
 
     def _taille(self, p: Path) -> str:
         try:
@@ -468,7 +460,7 @@ class ConvertisseurApp(tk.Tk):
         self.fichiers = []
         self.vars_coche = {}
         self.lbl_source.configure(text="(aucun fichier ni dossier)")
-        self.zone_drop.delete(0, "end")
+        self._rafraichir_liste()
         self.canvas_apercu.delete("all")
         self.apercu_img = None
         self.lbl_apercu_info.configure(text="")

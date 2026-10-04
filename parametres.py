@@ -33,6 +33,9 @@ class Parametres:
         chemin = fichier_config()
         if not chemin.is_file():
             return cls()
-        data = json.loads(chemin.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(chemin.read_text(encoding="utf-8-sig"))
+        except Exception:
+            return cls()
         valides = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**valides)

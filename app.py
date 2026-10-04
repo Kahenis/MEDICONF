@@ -81,6 +81,27 @@ class ConvertisseurApp(tk.Tk):
         nb.add(self.onglet_params, text="  Param\u00e8tres  ")
         self._onglet_principal()
         self._onglet_params()
+        self.after(100, self._recharger_params)
+
+    def _recharger_params(self) -> None:
+        from parametres import fichier_config
+        self.params = Parametres.charger()
+        chemin = self.params.dossier_cible
+        self.var_cible.set(chemin)
+        try:
+            self.entree_cible.delete(0, "end")
+            if chemin:
+                self.entree_cible.insert(0, chemin)
+        except Exception:
+            pass
+        self.var_sous.set(bool(self.params.parcourir_sous_dossiers))
+        self.var_arbo.set(bool(self.params.conserver_arborescence))
+        self.var_comp.set(bool(self.params.compression))
+        self.var_qualite.set(int(self.params.qualite_compression or 75))
+        self.scale_qualite.set(self.var_qualite.get())
+        self.lbl_qualite.configure(text=f"{self.var_qualite.get()} %")
+        self.var_conflit.set(self.params.conflit or "renommer")
+        self._log("Paramètres repris : " + str(fichier_config()))
 
     def _onglet_params(self) -> None:
         p = self.onglet_params

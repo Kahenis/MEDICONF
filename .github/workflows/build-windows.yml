@@ -23,10 +23,22 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller==6.11.1
 
+      - name: Verifier Tcl/Tk avant compilation
+        run: python verifier_tk.py --avant
+
       - name: PyInstaller dossier comme Ppix
         run: |
           pyinstaller --noconfirm --clean --windowed --onedir --noupx --collect-all tkinter --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import apercu --hidden-import scan_source --hidden-import app boot.py
-          python verifier_tk.py
+
+      - name: Verifier Tcl/Tk dans le dossier compile
+        run: python verifier_tk.py --apres
+
+      - name: Zip du dossier
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\MEDICONF -DestinationPath MEDICONF-windows.zip -Force
+          if (-not (Test-Path "dist\MEDICONF\_internal\_tk_data\tk.tcl")) { throw "tk.tcl absent, zip non publie" }
+          if (-not (Test-Path "dist\MEDICONF\_internal\_tcl_data\init.tcl")) { throw "init.tcl absent, zip non publie" }
 
       - name: Zip du dossier
         shell: pwsh

@@ -28,7 +28,9 @@ jobs:
 
       - name: PyInstaller dossier comme Ppix
         run: |
-          pyinstaller --noconfirm --clean --windowed --onedir --noupx --collect-all tkinter --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import apercu --hidden-import apercu_image --hidden-import scan_source --collect-all PIL --hidden-import app boot.py
+          pyi-makespec --noconfirm --windowed --onedir --noupx --collect-all tkinter --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import apercu --hidden-import apercu_image --hidden-import scan_source --collect-all PIL --runtime-hook rthook_tk.py boot.py
+          python ajuster_spec.py
+          pyinstaller --noconfirm --clean MEDICONF.spec
 
       - name: Verifier Tcl/Tk dans le dossier compile
         run: python verifier_tk.py --apres
@@ -36,9 +38,10 @@ jobs:
       - name: Zip du dossier
         shell: pwsh
         run: |
-          Compress-Archive -Path dist\MEDICONF -DestinationPath MEDICONF-windows.zip -Force
-          if (-not (Test-Path "dist\MEDICONF\_internal\_tk_data\tk.tcl")) { throw "tk.tcl absent, zip non publie" }
-          if (-not (Test-Path "dist\MEDICONF\_internal\_tcl_data\init.tcl")) { throw "init.tcl absent, zip non publie" }
+          python -c "import zipfile; from pathlib import Path; z=zipfile.ZipFile('MEDICONF-windows.zip','w',zipfile.ZIP_DEFLATED); root=Path('dist/MEDICONF');
+[ z.write(p, Path('MEDICONF')/p.relative_to(root)) for p in root.rglob('*') if p.is_file() ]; z.close(); noms=zipfile.ZipFile('MEDICONF-windows.zip').namelist();
+print('tk.tcl dans le zip', any(n.endswith('_tk_data/tk.tcl') or n.endswith('_tk_data\\tk.tcl') for n in noms));
+raise SystemExit(0 if any('tk.tcl' in n and 'init.tcl' in ''.join(noms) for n in noms) else 1)"
 
       - name: Zip du dossier
         shell: pwsh

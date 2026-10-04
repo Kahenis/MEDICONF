@@ -14,6 +14,7 @@ from PIL import Image, ImageTk
 import apercu
 import apercu_doc
 import apercu_image
+import apercu_pdf
 import scan_source
 from conversion import (
     EXTENSIONS_OK,
@@ -375,6 +376,14 @@ class ConvertisseurApp(tk.Tk):
         if apercu_doc.est_document(path):
             try:
                 im = apercu_doc.charger(path, cw - 8, ch - 8)
+                self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
+                self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+            except Exception as e:
+                self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
+            return
+        if apercu_pdf.est_pdf(path):
+            try:
+                im = apercu_pdf.charger(path, cw - 8, ch - 8)
                 self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
                 self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
             except Exception as e:

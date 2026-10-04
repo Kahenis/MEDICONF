@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Vérifie que tk.tcl est dans le dossier compilé, sinon le copie."""
+"""Place Tcl/Tk exactement là où le lanceur PyInstaller les attend."""
 import os
 import shutil
 import sys
@@ -11,15 +11,41 @@ if not dest.is_dir():
     print("dossier manquant", dest)
     sys.exit(1)
 
-root = Path(tkinter.__file__).resolve().parents[1]
-tcl = Path(os.environ.get("TCL_LIBRARY") or root / "tcl" / "tcl8.6")
-tk = Path(os.environ.get("TK_LIBRARY") or root / "tcl" / "tk8.6")
-print("tcl", tcl, tcl.exists())
-print("tk", tk, tk.exists())
-if not any(dest.rglob("tk.tcl")) and (tk / "tk.tcl").is_file():
-    shutil.copytree(tk, dest / "_tk_data", dirs_exist_ok=True)
-if not any(dest.rglob("init.tcl")) and (tcl / "init.tcl").is_file():
-    shutil.copytree(tcl, dest / "_tcl_data", dirs_exist_ok=True)
-trouves = list(dest.rglob("tk.tcl"))
-print("tk.tcl", trouves[:3])
-sys.exit(0 if trouves else 1)
+root = Path(getattr(sys, "base_prefix", sys.prefix))
+candidats_tcl = [
+    Path(os.environ.get("TCL_LIBRARY", "")),
+    root / "tcl" / "tcl8.6",
+    root / "lib" / "tcl8.6",
+    Path(tkinter.__file__).resolve().parents[1] / "tcl" / "tcl8.6",
+]
+candidats_tk = [
+    Path(os.environ.get("TK_LIBRARY", "")),
+    root / "tcl" / "tk8.6",
+    root / "lib" / "tk8.6",
+    Path(tkinter.__file__).resolve().parents[1] / "tcl" / "tk8.6",
+]
+
+def premier(candidats, marqueur):
+    for chemin in candidats:
+        if chemin and (chemin / marqueur).is_file():
+            return chemin
+    return None
+
+tcl = premier(candidats_tcl, "init.tcl")
+tk = premier(candidats_tk, "tk.tcl")
+print("tcl", tcl)
+print("tk", tk)
+if tcl is None or tk is None:
+    sys.exit(1)
+
+def poser(source, cible):
+    if cible.exists():
+        shutil.rmtree(cible)
+    shutil.copytree(source, cible)
+    print("copie", source, "->", cible)
+
+poser(tcl, dest / "_tcl_data")
+poser(tk, dest / "_tk_data")
+if not (dest / "_tk_data" / "tk.tcl").is_file() or not (dest / "_tcl_data" / "init.tcl").is_file():
+    sys.exit(1)
+print("Tcl/Tk pret")

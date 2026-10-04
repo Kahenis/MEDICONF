@@ -31,7 +31,6 @@ jobs:
           pyi-makespec --windowed --onedir --noupx --collect-all tkinter --collect-all PIL --collect-all pypdfium2 --runtime-hook rthook_tk.py --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import apercu --hidden-import apercu_image --hidden-import apercu_doc --hidden-import apercu_pdf --hidden-import scan_source --hidden-import app boot.py
           python ajuster_spec.py
           pyinstaller --noconfirm --clean MEDICONF.spec
-          python verifier_hook.py
 
       - name: Installer _tk_data
         run: python verifier_tk.py --apres

@@ -5,23 +5,20 @@ from pathlib import Path
 
 
 def _fixer_tcl() -> None:
-    """Le build Windows ne trouve parfois pas tk.tcl. On le désigne avant Tk."""
+    """Désigne les dossiers embarqués, même si une valeur incorrecte est déjà posée."""
     if not getattr(sys, "frozen", False):
         return
     base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
     racines = [base, Path(sys.executable).resolve().parent, base / "_internal"]
     for racine in racines:
-        if os.environ.get("TCL_LIBRARY"):
-            break
-        for candidat in racine.rglob("init.tcl"):
-            os.environ["TCL_LIBRARY"] = str(candidat.parent)
-            break
-    for racine in racines:
-        if os.environ.get("TK_LIBRARY"):
-            break
-        for candidat in racine.rglob("tk.tcl"):
-            os.environ["TK_LIBRARY"] = str(candidat.parent)
-            break
+        for nom in ("_tcl_data", "tcl8.6"):
+            if (racine / nom / "init.tcl").is_file():
+                os.environ["TCL_LIBRARY"] = str(racine / nom)
+                break
+        for nom in ("_tk_data", "tk8.6"):
+            if (racine / nom / "tk.tcl").is_file():
+                os.environ["TK_LIBRARY"] = str(racine / nom)
+                break
 
 
 _fixer_tcl()

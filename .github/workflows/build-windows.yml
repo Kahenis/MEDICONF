@@ -28,9 +28,7 @@ jobs:
 
       - name: PyInstaller dossier comme Ppix
         run: |
-          pyi-makespec --noconfirm --windowed --onedir --noupx --collect-all tkinter --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import apercu --hidden-import apercu_image --hidden-import scan_source --collect-all PIL --runtime-hook rthook_tk.py boot.py
-          python ajuster_spec.py
-          pyinstaller --noconfirm --clean MEDICONF.spec
+          pyinstaller --noconfirm --clean --windowed --onedir --noupx --collect-all tkinter --collect-all PIL --runtime-hook rthook_tk.py --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import apercu --hidden-import apercu_image --hidden-import scan_source --hidden-import app boot.py
 
       - name: Verifier Tcl/Tk dans le dossier compile
         run: python verifier_tk.py --apres

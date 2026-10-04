@@ -138,7 +138,7 @@ class ConvertisseurApp(tk.Tk):
 
     def _parcourir_cible(self) -> None:
         from patches_ui import dialogue_explorateur
-        d = dialogue_explorateur(self, "Choisir le dossier cible", True)
+        d = dialogue_explorateur(self, "Choisir le dossier cible", True, afficher_fichiers=True)
         if not d:
             messagebox.showwarning(APP_TITRE, "L'explorateur n'a pas renvoyé de chemin.", parent=self)
             return

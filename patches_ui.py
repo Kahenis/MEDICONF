@@ -106,8 +106,12 @@ def _rappel(_hwnd, msg, lp, _data):
     return 0
 
 
-def dialogue_explorateur(parent, titre: str, dossiers: bool = True) -> str:
+def dialogue_explorateur(parent, titre: str, dossiers: bool = True, afficher_fichiers: bool = False) -> str:
     """Dialogue natif de l'Explorateur Windows (IFileDialog) : reseau, lecteurs, chemin reel."""
+    if afficher_fichiers and dossiers and os.name == "nt":
+        chemin = _dialogue_dossier_avec_fichiers(parent, titre)
+        if chemin:
+            return chemin
     if os.name != "nt":
         if dossiers:
             return filedialog.askdirectory(title=titre, parent=parent) or ""
@@ -119,6 +123,44 @@ def dialogue_explorateur(parent, titre: str, dossiers: bool = True) -> str:
         if dossiers:
             return filedialog.askdirectory(title=titre, parent=parent) or ""
         return filedialog.askopenfilename(title=titre, parent=parent) or ""
+
+
+def _dialogue_dossier_avec_fichiers(parent, titre: str) -> str:
+    """Explorateur : dossiers et tous les fichiers visibles. Le choix reste un dossier."""
+    dernier = {"chemin": ""}
+
+    @_CB
+    def rappel(_hwnd, msg, lp, _data):
+        if msg == BFFM_SELCHANGED and lp:
+            chemin = _chemin_pidl(lp)
+            if chemin:
+                dernier["chemin"] = chemin
+        return 0
+
+    display = ctypes.create_unicode_buffer(520)
+    bi = _BROWSEINFO()
+    try:
+        bi.hwndOwner = parent.winfo_id()
+    except Exception:
+        bi.hwndOwner = None
+    bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
+    bi.lpszTitle = titre + " — fichiers affichés pour repérage, le dossier sera enregistré."
+    bi.ulFlags = 0x0010 | 0x0040 | 0x4000 | 0x8000
+    bi.lpfn = ctypes.cast(rappel, ctypes.c_void_p)
+    ctypes.windll.ole32.CoInitialize(None)
+    shell = _shell()
+    pidl = shell.SHBrowseForFolderW(ctypes.byref(bi))
+    chemin = ""
+    if pidl:
+        chemin = _chemin_pidl(pidl) or dernier["chemin"]
+        ctypes.windll.ole32.CoTaskMemFree(ctypes.c_void_p(pidl))
+    chemin = chemin or dernier["chemin"]
+    if not chemin:
+        return ""
+    p = Path(chemin)
+    if p.is_file():
+        p = p.parent
+    return str(p) if p.exists() else ""
 
 
 def _dialogue_com(parent, titre: str, dossiers: bool) -> str:

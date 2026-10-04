@@ -197,7 +197,8 @@ class ConvertisseurApp(tk.Tk):
         self.params.conflit = self.var_conflit.get()
         try:
             self.params.sauvegarder()
-            self._log("Paramètres enregistrés.")
+            from parametres import fichier_config
+            self._log("Paramètres enregistrés : " + str(fichier_config()))
         except Exception as e:
             self._log("Paramètres non enregistrés : " + str(e), erreur=True)
 

@@ -1,26 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Persistance des parametres."""
+"""Paramètres dans le dossier AppData de l'utilisateur."""
 from __future__ import annotations
-import json, os, sys
+import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-def chemins_config() -> list[Path]:
-    chemins = []
-    if getattr(sys, "frozen", False):
-        chemins.append(Path(sys.executable).resolve().parent / "parametres.json")
-    else:
-        chemins.append(Path(__file__).resolve().parent / "parametres.json")
+
+def fichier_config() -> Path:
     base = os.environ.get("APPDATA") or os.environ.get("XDG_CONFIG_HOME")
-    if base:
-        chemins.append(Path(base) / "MEDICONF" / "parametres.json")
-    else:
-        chemins.append(Path.home() / ".mediconf" / "parametres.json")
-    return chemins
+    if not base:
+        base = str(Path.home() / "AppData" / "Roaming")
+    return Path(base) / "MEDICONF" / "parametres.json"
 
-
-def dossier_config() -> Path:
-    return chemins_config()[0].parent
 
 @dataclass
 class Parametres:
@@ -32,20 +24,15 @@ class Parametres:
     conflit: str = "renommer"
 
     def sauvegarder(self) -> None:
-        contenu = json.dumps(asdict(self), ensure_ascii=False, indent=2)
-        for chemin in chemins_config():
-            chemin.parent.mkdir(parents=True, exist_ok=True)
-            chemin.write_text(contenu, encoding="utf-8")
+        chemin = fichier_config()
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2), encoding="utf-8")
 
     @classmethod
     def charger(cls) -> "Parametres":
-        for chemin in chemins_config():
-            if not chemin.is_file():
-                continue
-            try:
-                data = json.loads(chemin.read_text(encoding="utf-8"))
-                valides = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-                return cls(**valides)
-            except Exception:
-                continue
-        return cls()
+        chemin = fichier_config()
+        if not chemin.is_file():
+            return cls()
+        data = json.loads(chemin.read_text(encoding="utf-8"))
+        valides = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        return cls(**valides)

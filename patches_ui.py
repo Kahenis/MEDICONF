@@ -109,9 +109,14 @@ def _rappel(_hwnd, msg, lp, _data):
 def dialogue_explorateur(parent, titre: str, dossiers: bool = True, afficher_fichiers: bool = False) -> str:
     """Dialogue natif de l'Explorateur Windows (IFileDialog) : reseau, lecteurs, chemin reel."""
     if afficher_fichiers and dossiers and os.name == "nt":
-        chemin = _dialogue_dossier_avec_fichiers(parent, titre)
+        chemin = _dialogue_com(parent, titre, False, forcer_tous_fichiers=True)
         if chemin:
-            return chemin
+            p = Path(chemin)
+            if p.is_file():
+                p = p.parent
+            if p.exists():
+                return str(p)
+        return ""
     if os.name != "nt":
         if dossiers:
             return filedialog.askdirectory(title=titre, parent=parent) or ""
@@ -163,7 +168,7 @@ def _dialogue_dossier_avec_fichiers(parent, titre: str) -> str:
     return str(p) if p.exists() else ""
 
 
-def _dialogue_com(parent, titre: str, dossiers: bool) -> str:
+def _dialogue_com(parent, titre: str, dossiers: bool, forcer_tous_fichiers: bool = False) -> str:
     import uuid
     from ctypes import POINTER, WINFUNCTYPE, byref, c_void_p, cast, sizeof, windll, HRESULT
     from ctypes.wintypes import DWORD, HWND, LPWSTR
@@ -193,6 +198,7 @@ def _dialogue_com(parent, titre: str, dossiers: bool) -> str:
 
     release = methode(com, 2, WINFUNCTYPE(HRESULT, c_void_p))
     show = methode(com, 3, WINFUNCTYPE(HRESULT, c_void_p, HWND))
+    set_types = methode(com, 4, WINFUNCTYPE(HRESULT, c_void_p, ctypes.c_uint, ctypes.c_void_p))
     set_options = methode(com, 9, WINFUNCTYPE(HRESULT, c_void_p, DWORD))
     get_options = methode(com, 10, WINFUNCTYPE(HRESULT, c_void_p, POINTER(DWORD)))
     set_title = methode(com, 17, WINFUNCTYPE(HRESULT, c_void_p, LPWSTR))
@@ -202,11 +208,16 @@ def _dialogue_com(parent, titre: str, dossiers: bool) -> str:
         flags = DWORD()
         get_options(com, byref(flags))
         flags.value |= 0x40 | 0x800
-        if dossiers:
+        if dossiers and not forcer_tous_fichiers:
             flags.value |= 0x20
         else:
             flags.value |= 0x1000
         set_options(com, flags)
+        if forcer_tous_fichiers:
+            class _Filtre(ctypes.Structure):
+                _fields_ = [("pszName", ctypes.c_wchar_p), ("pszSpec", ctypes.c_wchar_p)]
+            spec = _Filtre("Tous les fichiers (*.*)", "*.*")
+            set_types(com, 1, ctypes.byref(spec))
         set_title(com, titre)
         set_ok(com, "Choisir ce dossier" if dossiers else "Selectionner")
         hwnd = 0
@@ -313,7 +324,7 @@ def appliquer(cls) -> None:
                 self._charger_source(Path(f))
 
     def _choisir_dossier_source(self) -> None:
-        d = dialogue_explorateur(self, "Sélectionner le dossier source", True)
+        d = dialogue_explorateur(self, "Sélectionner le dossier source", True, afficher_fichiers=True)
         if d:
             self._charger_source(Path(d))
 

@@ -359,7 +359,6 @@ class ConvertisseurApp(tk.Tk):
         path = Path(path)
         self.canvas_apercu.delete("all")
         self.apercu_img = None
-        self.lbl_image.configure(image="")
         self.lbl_apercu_info.configure(text=path.name + "  —  " + str(path))
         self.canvas_apercu.update_idletasks()
         cw = max(self.canvas_apercu.winfo_width(), 280)
@@ -369,9 +368,8 @@ class ConvertisseurApp(tk.Tk):
             return
         try:
             im = apercu_image.charger(path, cw - 16, ch - 16)
-            self.apercu_img = ImageTk.PhotoImage(im)
-            self.lbl_image.configure(image=self.apercu_img)
-            self.canvas_apercu.create_window(cw // 2, ch // 2, window=self.lbl_image)
+            self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
+            self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
         except Exception as e:
             self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
 

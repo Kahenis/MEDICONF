@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 import apercu
+import apercu_image
 import scan_source
 from conversion import (
     EXTENSIONS_OK,
@@ -227,6 +228,7 @@ class ConvertisseurApp(tk.Tk):
         droite.grid(row=0, column=1, sticky="nsew")
         self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0)
         self.canvas_apercu.pack(fill="both", expand=True)
+        self.lbl_image = tk.Label(self.canvas_apercu, bg="#e8eaed")
         self.lbl_apercu_info = ttk.Label(droite, text="")
         self.lbl_apercu_info.pack(fill="x", pady=(6, 0))
         actions = ttk.Frame(p)
@@ -322,8 +324,12 @@ class ConvertisseurApp(tk.Tk):
             ttk.Checkbutton(ligne, variable=var, command=bascule).pack(side="left")
             nom = tk.Label(ligne, text=p.name, font=("Segoe UI", 10), fg="#1f4e79", bg="#ffffff", cursor="hand2")
             nom.pack(side="left", padx=(4, 8))
-            tk.Label(ligne, text=str(p), font=("Segoe UI", 8), fg="#6b7280", bg="#ffffff").pack(side="left")
-            nom.bind("<Button-1>", lambda _e, chemin=p: self._afficher_apercu(chemin))
+            chemin_lbl = tk.Label(ligne, text=str(p), font=("Segoe UI", 8), fg="#6b7280", bg="#ffffff", cursor="hand2")
+            chemin_lbl.pack(side="left")
+            nom._chemin_source = str(p)
+            chemin_lbl._chemin_source = str(p)
+            nom.bind("<Button-1>", self._clic_nom_fichier)
+            chemin_lbl.bind("<Button-1>", self._clic_nom_fichier)
         self.zone_drop.update_idletasks()
         self.zone_drop.configure(scrollregion=self.zone_drop.bbox("all"))
         self._log(str(len(self._index_visible)) + " fichier(s) affiché(s)" + (" — sous-dossiers" if self.var_sous.get() else ""))
@@ -344,17 +350,28 @@ class ConvertisseurApp(tk.Tk):
             self._afficher_apercu(p)
         return "break"
 
+    def _clic_nom_fichier(self, event) -> None:
+        chemin = getattr(event.widget, "_chemin_source", "")
+        if chemin:
+            self._afficher_apercu(Path(chemin))
+
     def _afficher_apercu(self, path: Path) -> None:
+        path = Path(path)
         self.canvas_apercu.delete("all")
         self.apercu_img = None
+        self.lbl_image.configure(image="")
         self.lbl_apercu_info.configure(text=path.name + "  —  " + str(path))
         self.canvas_apercu.update_idletasks()
-        cw = max(self.canvas_apercu.winfo_width(), 180)
-        ch = max(self.canvas_apercu.winfo_height(), 180)
+        cw = max(self.canvas_apercu.winfo_width(), 280)
+        ch = max(self.canvas_apercu.winfo_height(), 220)
+        if not apercu_image.est_image(path):
+            self.canvas_apercu.create_text(16, 16, anchor="nw", text="Aperçu image pas encore disponible\npour ce type de fichier.", fill="#444")
+            return
         try:
-            im = apercu.miniature(path, cw - 12, ch - 12)
+            im = apercu_image.charger(path, cw - 16, ch - 16)
             self.apercu_img = ImageTk.PhotoImage(im)
-            self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+            self.lbl_image.configure(image=self.apercu_img)
+            self.canvas_apercu.create_window(cw // 2, ch // 2, window=self.lbl_image)
         except Exception as e:
             self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
 

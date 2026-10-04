@@ -615,10 +615,6 @@ def brancher(fen, menu) -> None:
     tk.Button(fen, text="Retour au menu", command=fen._quitter).place(relx=1.0, rely=0.0, x=-10, y=6, anchor="ne")
     fen.protocol("WM_DELETE_WINDOW", fen._quitter)
     try:
-        fen.zone_drop.bind("<Button-1>", fen._clic_liste)
-    except Exception:
-        pass
-    try:
         fen.filtre_images.set(True)
         fen.filtre_docs.set(True)
     except Exception:

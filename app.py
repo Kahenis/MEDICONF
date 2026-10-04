@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 import apercu
+import apercu_doc
 import apercu_image
 import scan_source
 from conversion import (
@@ -363,15 +364,23 @@ class ConvertisseurApp(tk.Tk):
         self.canvas_apercu.update_idletasks()
         cw = max(self.canvas_apercu.winfo_width(), 280)
         ch = max(self.canvas_apercu.winfo_height(), 220)
-        if not apercu_image.est_image(path):
-            self.canvas_apercu.create_text(16, 16, anchor="nw", text="Aperçu image pas encore disponible\npour ce type de fichier.", fill="#444")
+        if apercu_image.est_image(path):
+            try:
+                im = apercu_image.charger(path, cw - 16, ch - 16)
+                self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
+                self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+            except Exception as e:
+                self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
             return
-        try:
-            im = apercu_image.charger(path, cw - 16, ch - 16)
-            self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
-            self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
-        except Exception as e:
-            self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
+        if apercu_doc.est_document(path):
+            try:
+                im = apercu_doc.charger(path, cw - 8, ch - 8)
+                self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
+                self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+            except Exception as e:
+                self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
+            return
+        self.canvas_apercu.create_text(16, 16, anchor="nw", text="Aperçu pas encore disponible\npour ce type de fichier.", fill="#444")
 
     def _taille(self, p: Path) -> str:
         try:

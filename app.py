@@ -197,8 +197,9 @@ class ConvertisseurApp(tk.Tk):
         self.params.conflit = self.var_conflit.get()
         try:
             self.params.sauvegarder()
-        except Exception:
-            pass
+            self._log("Paramètres enregistrés.")
+        except Exception as e:
+            self._log("Paramètres non enregistrés : " + str(e), erreur=True)
 
     def _onglet_principal(self) -> None:
         p = self.onglet_principal
@@ -283,6 +284,11 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_source.configure(text=f"{path}   —   {path.name}")
         self.fichiers = self._scanner(path)
         self._rafraichir_liste()
+        try:
+            self.btn_convertir.configure(state="normal")
+            self.conversion_en_cours = False
+        except Exception:
+            pass
         self._log("Source : " + str(path) + " — " + str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if self._sous_dossiers_demandes() else "non"))
 
     def _sous_dossiers_demandes(self) -> bool:
@@ -320,9 +326,14 @@ class ConvertisseurApp(tk.Tk):
         self._index_visible = list(self._visible())
         for p in self._index_visible:
             cle = str(p)
-            if cle not in self.vars_coche:
-                self.vars_coche[cle] = True
-            var = tk.BooleanVar(value=self.vars_coche[cle])
+            actuel = self.vars_coche.get(cle, True)
+            if not isinstance(actuel, bool):
+                try:
+                    actuel = bool(actuel.get())
+                except Exception:
+                    actuel = True
+            var = tk.BooleanVar(value=actuel)
+            self.vars_coche[cle] = var
             ligne = ttk.Frame(self.liste_frame)
             ligne.pack(fill="x", anchor="w", pady=2)
             def bascule(v=var, c=cle):
@@ -418,8 +429,17 @@ class ConvertisseurApp(tk.Tk):
             self.vars_coche[str(p)] = False
         self._rafraichir_liste()
 
+    def _coche(self, cle: str) -> bool:
+        var = self.vars_coche.get(cle, True)
+        if isinstance(var, bool):
+            return var
+        try:
+            return bool(var.get())
+        except Exception:
+            return True
+
     def _selectionnes(self) -> list[Path]:
-        return [p for p in self._visible() if self.vars_coche.get(str(p), True)]
+        return [p for p in self._visible() if self._coche(str(p))]
 
     def _cible_ok(self) -> Path | None:
         d = self.var_cible.get().strip() or self.params.dossier_cible
@@ -495,37 +515,45 @@ class ConvertisseurApp(tk.Tk):
         if cible is None:
             self._ouvrir_parametres()
             return
-        if not messagebox.askyesno(APP_TITRE, f"Convertir {len(fichiers)} fichier(s) vers :\n{cible} ?"):
+        if not messagebox.askyesno(APP_TITRE, f"Convertir {len(fichiers)} fichier(s) coché(s) vers :\n{cible} ?"):
             return
+        self._sauver_params()
         self.conversion_en_cours = True
         self.btn_convertir.configure(state="disabled")
         self.progress.configure(maximum=len(fichiers), value=0)
         racine = self.source_path if self.source_path and self.source_path.is_dir() else None
+        compression = bool(self.var_comp.get())
+        qualite = int(self.var_qualite.get())
+        arbo = bool(self.var_arbo.get())
+        conflit = self.var_conflit.get()
 
         def travail():
             ok = ko = 0
-            for i, source in enumerate(fichiers, 1):
-                dest = nom_pdf_cible(source, cible, racine, self.var_arbo.get(), "renommer" if self.var_conflit.get() == "demander" else self.var_conflit.get())
-                try:
-                    warn = convertir_fichier(source, dest, self.var_comp.get(), int(self.var_qualite.get()))
-                    ok += 1
-                    msg = f"OK  {source.name}  →  {dest.name}"
-                    if source.suffix.lower() == ".pdf":
-                        msg += "  (copie seule)"
-                    if warn:
-                        msg += f"  ({warn})"
-                    self.after(0, lambda m=msg, s=source: (self._log(m), self._marquer(s, "ok")))
-                except Exception as e:
-                    ko += 1
-                    self.after(0, lambda s=source, err=str(e): (self._log(f"ERREUR  {s.name} : {err}", erreur=True), self._marquer(s, "erreur")))
-                self.after(0, lambda v=i: self.progress.configure(value=v))
-
-            def fin():
-                self.conversion_en_cours = False
-                self.btn_convertir.configure(state="normal")
-                self._log(f"Terminé : {ok} réussi(s), {ko} échec(s).")
-
-            self.after(0, fin)
+            try:
+                for i, source in enumerate(fichiers, 1):
+                    try:
+                        dest = nom_pdf_cible(source, cible, racine, arbo, "renommer" if conflit == "demander" else conflit)
+                        warn = convertir_fichier(source, dest, compression, qualite)
+                        ok += 1
+                        msg = f"OK  {source.name}  →  {dest.name}"
+                        if source.suffix.lower() == ".pdf":
+                            msg += "  (copie seule)"
+                        if warn:
+                            msg += f"  ({warn})"
+                        self.after(0, lambda m=msg, s=source: (self._log(m), self._marquer(s, "ok")))
+                    except Exception as e:
+                        ko += 1
+                        self.after(0, lambda s=source, err=str(e): (self._log(f"ERREUR  {s.name} : {err}", erreur=True), self._marquer(s, "erreur")))
+                    self.after(0, lambda v=i: self.progress.configure(value=v))
+            finally:
+                def fin():
+                    self.conversion_en_cours = False
+                    try:
+                        self.btn_convertir.configure(state="normal")
+                    except Exception:
+                        pass
+                    self._log(f"Terminé : {ok} réussi(s), {ko} échec(s).")
+                self.after(0, fin)
 
         threading.Thread(target=travail, daemon=True).start()
 

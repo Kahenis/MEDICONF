@@ -588,6 +588,10 @@ def appliquer(cls) -> None:
         self._log(f"Source : {path} — {len(self.fichiers)} fichier(s), sous-dossiers : {'oui' if self.var_sous.get() else 'non'}")
 
     def _quitter(self) -> None:
+        try:
+            self._sauver_params()
+        except Exception:
+            pass
         if self.var_cible.get().strip():
             _enregistrer_cible(self, self.var_cible.get())
         menu = getattr(self, "_menu_principal", None)

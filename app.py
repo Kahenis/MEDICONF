@@ -14,7 +14,7 @@ from PIL import Image, ImageTk
 import apercu
 import apercu_doc
 import apercu_image
-import apercu_pdf
+import themes
 import scan_source
 from conversion import (
     EXTENSIONS_OK,
@@ -101,6 +101,8 @@ class ConvertisseurApp(tk.Tk):
         self.scale_qualite.set(self.var_qualite.get())
         self.lbl_qualite.configure(text=f"{self.var_qualite.get()} %")
         self.var_conflit.set(self.params.conflit or "renommer")
+        self.var_theme.set(self.params.theme or "basic")
+        themes.appliquer(self, self.var_theme.get())
         self._log("Paramètres repris : " + str(fichier_config()))
 
     def _onglet_params(self) -> None:
@@ -141,7 +143,20 @@ class ConvertisseurApp(tk.Tk):
             ("demander", "Demander \u00e0 chaque fois"),
         ):
             ttk.Radiobutton(conflit, text=txt, value=val, variable=self.var_conflit, command=self._sauver_params).pack(anchor="w", pady=2)
-        ttk.Label(p, text="Les param\u00e8tres sont enregistr\u00e9s automatiquement.", style="Info.TLabel").pack(anchor="w", padx=16, pady=8)
+        theme = ttk.LabelFrame(p, text=" Thème de l'interface ", padding=12)
+        theme.pack(fill="x", padx=16, pady=8)
+        self.var_theme = tk.StringVar(value=getattr(self.params, "theme", "basic") or "basic")
+        for val, txt in (
+            ("basic", "Basic : l'apparence actuelle"),
+            ("medical", "Médical : bleu, rouge et blanc, boutons en relief"),
+            ("pro", "Pro : couleurs de style HelloDoc"),
+        ):
+            ttk.Radiobutton(theme, text=txt, value=val, variable=self.var_theme, command=self._changer_theme).pack(anchor="w", pady=2)
+        ttk.Label(p, text="Les paramètres sont enregistrés automatiquement.", style="Info.TLabel").pack(anchor="w", padx=16, pady=8)
+
+    def _changer_theme(self) -> None:
+        themes.appliquer(self, self.var_theme.get())
+        self._sauver_params()
 
     def _chg_qualite(self, _evt=None) -> None:
         v = int(float(self.scale_qualite.get()))
@@ -216,6 +231,7 @@ class ConvertisseurApp(tk.Tk):
         self.params.qualite_compression = int(self.var_qualite.get())
         self.params.conserver_arborescence = self.var_arbo.get()
         self.params.conflit = self.var_conflit.get()
+        self.params.theme = self.var_theme.get()
         try:
             self.params.sauvegarder()
             from parametres import fichier_config

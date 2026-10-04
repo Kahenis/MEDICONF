@@ -22,6 +22,7 @@ class Parametres:
     qualite_compression: int = 75
     conserver_arborescence: bool = False
     conflit: str = "renommer"
+    theme: str = "basic"
 
     def sauvegarder(self) -> None:
         chemin = fichier_config()

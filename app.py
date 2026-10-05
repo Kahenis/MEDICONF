@@ -25,7 +25,7 @@ from conversion import (
 )
 from parametres import Parametres
 
-APP_TITRE = "MEDICONF \u2014 Convertisseur PDF"
+APP_TITRE = "MEDICONF - Convertisseur PDF Pour hellodoc - Par JF Guilard"
 COULEUR_FOND = "#f4f6f8"
 COULEUR_ACCENT = "#1f4e79"
 COULEUR_ZONE = "#ffffff"
@@ -163,6 +163,10 @@ class ConvertisseurApp(tk.Tk):
         self.entree_cible.pack(side="left", fill="x", expand=True, padx=(0, 8))
         ttk.Button(ligne, text="Parcourir\u2026", command=self._parcourir_cible).pack(side="left", padx=(0, 8))
         ttk.Button(ligne, text="Choisir ce dossier", command=self._valider_cible).pack(side="left")
+        hello = ttk.Frame(bloc)
+        hello.pack(fill="x", pady=(4, 0))
+        ttk.Label(hello, text="Boite de réception Hellodoc de l'utilisateur").pack(side="left")
+        ttk.Button(hello, text="Chemin courant", command=self._chemin_hellodoc).pack(side="left", padx=12)
         milieu = ttk.Frame(p)
         milieu.pack(fill="x", padx=16, pady=8)
         milieu.columnconfigure(0, weight=1)
@@ -203,7 +207,13 @@ class ConvertisseurApp(tk.Tk):
             ttk.Radiobutton(conflit, text=txt, value=val, variable=self.var_conflit).pack(anchor="w", pady=2)
         ttk.Button(p, text="Enregistrer", command=self._sauver_params).pack(anchor="w", padx=16, pady=8)
 
-    def _chg_qualite(self, _evt=None) -> None:
+    def _chemin_hellodoc(self) -> None:
+        self.var_cible.set(r"C:\Hellodoc\scans")
+        try:
+            self.entree_cible.delete(0, "end")
+            self.entree_cible.insert(0, r"C:\Hellodoc\scans")
+        except Exception:
+            pass
         v = int(float(self.scale_qualite.get()))
         self.var_qualite.set(v)
         self.lbl_qualite.configure(text=f"{v} %")
@@ -296,8 +306,10 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_source.pack(side="left", padx=8, fill="x", expand=True)
         ttk.Button(haut, text="Parcourir\u2026", command=self._parcourir_source).pack(side="left", padx=4)
         ttk.Button(haut, text="S\u00e9lectionner ce dossier source", command=self._choisir_dossier_source).pack(side="left")
-        ttk.Button(p, text="Tout cocher", command=self._tout_cocher).pack(anchor="w", padx=12, pady=(4, 0))
-        ttk.Button(p, text="Tout décocher", command=self._tout_decocher).pack(anchor="w", padx=12)
+        cases = ttk.Frame(p)
+        cases.pack(anchor="w", padx=12, pady=(4, 0))
+        ttk.Button(cases, text="Tout cocher", command=self._tout_cocher).pack(side="left")
+        ttk.Button(cases, text="Tout décocher", command=self._tout_decocher).pack(side="left", padx=8)
         corps = ttk.Frame(p)
         corps.pack(fill="both", expand=True, padx=12, pady=6)
         corps.columnconfigure(0, weight=3)

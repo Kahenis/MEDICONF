@@ -69,6 +69,7 @@ class ConvertisseurApp(tk.Tk):
         s.configure("TButton", font=("Segoe UI", 9), padding=6)
         s.configure("TNotebook.Tab", font=("Segoe UI", 10), padding=(14, 6))
         s.configure("TCheckbutton", background=COULEUR_FOND, font=("Segoe UI", 10))
+        themes.appliquer(self)
 
     def _construire(self) -> None:
         ttk.Label(self, text=APP_TITRE, style="Titre.TLabel").pack(anchor="w", padx=16, pady=(12, 4))
@@ -108,8 +109,7 @@ class ConvertisseurApp(tk.Tk):
         self.scale_qualite.set(self.var_qualite.get())
         self.lbl_qualite.configure(text=f"{self.var_qualite.get()} %")
         self.var_conflit.set(self.params.conflit or "renommer")
-        self.var_theme.set(self.params.theme or "basic")
-        themes.appliquer(self, self.var_theme.get())
+        themes.appliquer(self)
         self._appliquer_cases()
         self._log("Paramètres repris : sous-dossiers=" + ("oui" if self._cases["sous"] else "non") + ", arborescence=" + ("oui" if self._cases["arbo"] else "non") + ", compression=" + ("oui" if self._cases["comp"] else "non"))
 
@@ -144,7 +144,7 @@ class ConvertisseurApp(tk.Tk):
         def walk(w):
             for enfant in w.winfo_children():
                 try:
-                    if enfant.winfo_class() == "TRadiobutton" and str(enfant.cget("value")) in (self.var_conflit.get(), self.var_theme.get()):
+                    if enfant.winfo_class() == "TRadiobutton" and str(enfant.cget("value")) == self.var_conflit.get():
                         enfant.invoke()
                 except Exception:
                     pass
@@ -201,21 +201,7 @@ class ConvertisseurApp(tk.Tk):
             ("demander", "Demander à chaque fois"),
         ):
             ttk.Radiobutton(conflit, text=txt, value=val, variable=self.var_conflit).pack(anchor="w", pady=2)
-        theme = ttk.LabelFrame(p, text=" Thème de l'interface ", padding=8)
-        theme.pack(fill="x", padx=16, pady=8)
-        self.var_theme = tk.StringVar(value=getattr(self.params, "theme", "basic") or "basic")
-        ligne_theme = ttk.Frame(theme)
-        ligne_theme.pack(fill="x")
-        for val, txt in (
-            ("basic", "Basic"),
-            ("medical", "Médical"),
-            ("pro", "Pro HelloDoc"),
-        ):
-            ttk.Radiobutton(ligne_theme, text=txt, value=val, variable=self.var_theme, command=self._changer_theme).pack(side="left", padx=12)
         ttk.Button(p, text="Enregistrer", command=self._sauver_params).pack(anchor="w", padx=16, pady=8)
-
-    def _changer_theme(self) -> None:
-        themes.appliquer(self, self.var_theme.get())
 
     def _chg_qualite(self, _evt=None) -> None:
         v = int(float(self.scale_qualite.get()))
@@ -288,7 +274,6 @@ class ConvertisseurApp(tk.Tk):
         self.params.qualite_compression = int(float(self.scale_qualite.get()))
         self.params.conserver_arborescence = bool(self._cases.get("arbo"))
         self.params.conflit = self.var_conflit.get()
-        self.params.theme = self.var_theme.get()
         try:
             self.params.sauvegarder()
             from parametres import fichier_config

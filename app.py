@@ -14,6 +14,7 @@ from PIL import Image, ImageTk
 import apercu
 import apercu_doc
 import apercu_image
+import apercu_pdf
 import themes
 import scan_source
 from conversion import (

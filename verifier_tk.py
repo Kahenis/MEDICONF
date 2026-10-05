@@ -61,6 +61,10 @@ def apres():
     poser(tk, dest / "_tk_data")
     poser(tcl, dest / "tcl8.6")
     poser(tk, dest / "tk8.6")
+    poser(tcl, dest / "lib" / "tcl8.6")
+    poser(tk, dest / "lib" / "tk8.6")
+    poser(tcl, dest.parent / "lib" / "tcl8.6")
+    poser(tk, dest.parent / "lib" / "tk8.6")
     init_tcl = dest / "_tcl_data" / "init.tcl"
     tk_tcl = dest / "_tk_data" / "tk.tcl"
     print("APRES compilation")

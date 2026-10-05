@@ -23,8 +23,8 @@ def _dossier(marque, noms):
     return ""
 
 
-tcl = _dossier("init.tcl", ("_tcl_data", "tcl8.6"))
-tk = _dossier("tk.tcl", ("_tk_data", "tk8.6"))
+tcl = _dossier("init.tcl", ("_tcl_data", "tcl8.6", "lib/tcl8.6"))
+tk = _dossier("tk.tcl", ("_tk_data", "tk8.6", "lib/tk8.6"))
 if tcl:
     os.environ["TCL_LIBRARY"] = tcl
 if tk:

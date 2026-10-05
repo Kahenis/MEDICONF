@@ -11,11 +11,11 @@ def _fixer_tcl() -> None:
     base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
     racines = [base, Path(sys.executable).resolve().parent, base / "_internal"]
     for racine in racines:
-        for nom in ("_tcl_data", "tcl8.6"):
+        for nom in ("_tcl_data", "tcl8.6", "lib/tcl8.6"):
             if (racine / nom / "init.tcl").is_file():
                 os.environ["TCL_LIBRARY"] = str(racine / nom)
                 break
-        for nom in ("_tk_data", "tk8.6"):
+        for nom in ("_tk_data", "tk8.6", "lib/tk8.6"):
             if (racine / nom / "tk.tcl").is_file():
                 os.environ["TK_LIBRARY"] = str(racine / nom)
                 break

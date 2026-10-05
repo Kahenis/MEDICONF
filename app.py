@@ -97,31 +97,25 @@ class ConvertisseurApp(tk.Tk):
         self.var_sous.set(bool(self.params.parcourir_sous_dossiers))
         self.var_arbo.set(bool(self.params.conserver_arborescence))
         self.var_comp.set(bool(self.params.compression))
-        self._cocher(self.case_sous, self.params.parcourir_sous_dossiers)
-        self._cocher(self.case_arbo, self.params.conserver_arborescence)
-        self._cocher(self.case_comp, self.params.compression)
         self.var_qualite.set(int(self.params.qualite_compression or 75))
         self.scale_qualite.set(self.var_qualite.get())
         self.lbl_qualite.configure(text=f"{self.var_qualite.get()} %")
         self.var_conflit.set(self.params.conflit or "renommer")
         self.var_theme.set(self.params.theme or "basic")
         themes.appliquer(self, self.var_theme.get())
-        self._cocher(self.case_sous, self.params.parcourir_sous_dossiers)
-        self._cocher(self.case_arbo, self.params.conserver_arborescence)
-        self._cocher(self.case_comp, self.params.compression)
-        self._log("Paramètres repris : " + str(fichier_config()))
+        self._marquer_radios()
+        self._log("Paramètres repris : sous-dossiers=" + ("oui" if self.params.parcourir_sous_dossiers else "non") + ", arborescence=" + ("oui" if self.params.conserver_arborescence else "non") + ", compression=" + ("oui" if self.params.compression else "non"))
 
-    def _cocher(self, case, actif) -> None:
-        try:
-            if actif:
-                case.select()
-            else:
-                case.deselect()
-        except Exception:
-            try:
-                case.state(["selected"] if actif else ["!selected"])
-            except Exception:
-                pass
+    def _marquer_radios(self) -> None:
+        def walk(w):
+            for enfant in w.winfo_children():
+                try:
+                    if enfant.winfo_class() == "TRadiobutton" and str(enfant.cget("value")) in (self.var_conflit.get(), self.var_theme.get()):
+                        enfant.invoke()
+                except Exception:
+                    pass
+                walk(enfant)
+        walk(self.onglet_params)
 
     def _onglet_params(self) -> None:
         p = self.onglet_params
@@ -250,17 +244,22 @@ class ConvertisseurApp(tk.Tk):
 
     def _sauver_params(self) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()
-        self.params.parcourir_sous_dossiers = self.var_sous.get()
-        self.params.compression = self.var_comp.get()
-        self.params.qualite_compression = int(self.var_qualite.get())
-        self.params.conserver_arborescence = self.var_arbo.get()
+        self.params.parcourir_sous_dossiers = bool(self.var_sous.get())
+        self.params.compression = bool(self.var_comp.get())
+        self.params.qualite_compression = int(float(self.scale_qualite.get()))
+        self.params.conserver_arborescence = bool(self.var_arbo.get())
         self.params.conflit = self.var_conflit.get()
         self.params.theme = self.var_theme.get()
         try:
             self.params.sauvegarder()
             from parametres import fichier_config
-            self._log("Paramètres enregistrés : " + str(fichier_config()))
-            messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.")
+            self._log(
+                "Enregistré : sous-dossiers=" + ("oui" if self.params.parcourir_sous_dossiers else "non")
+                + ", arborescence=" + ("oui" if self.params.conserver_arborescence else "non")
+                + ", compression=" + ("oui" if self.params.compression else "non")
+                + " — " + str(fichier_config())
+            )
+            messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.\nSous-dossiers : " + ("oui" if self.params.parcourir_sous_dossiers else "non") + "\nArborescence : " + ("oui" if self.params.conserver_arborescence else "non") + "\nCompression : " + ("oui" if self.params.compression else "non"))
         except Exception as e:
             self._log("Paramètres non enregistrés : " + str(e), erreur=True)
 
@@ -355,24 +354,7 @@ class ConvertisseurApp(tk.Tk):
         self._log("Source : " + str(path) + " — " + str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if self._sous_dossiers_demandes() else "non"))
 
     def _sous_dossiers_demandes(self) -> bool:
-        """Lit la case cochée à l'écran, pas seulement la variable."""
-        def walk(w):
-            for enfant in w.winfo_children():
-                try:
-                    if "sous-dossier" in str(enfant.cget("text")).lower():
-                        return bool(enfant.instate(["selected"]))
-                except Exception:
-                    pass
-                trouve = walk(enfant)
-                if trouve is not None:
-                    return trouve
-            return None
-        etat = walk(self)
-        if etat is None:
-            etat = bool(self.var_sous.get())
-        if bool(self.var_sous.get()) != etat:
-            self.var_sous.set(etat)
-        return etat
+        return bool(self.var_sous.get())
 
     def _scanner(self, racine: Path) -> list[Path]:
         return scan_source.lister(racine, self._sous_dossiers_demandes())
@@ -667,7 +649,6 @@ class ConvertisseurApp(tk.Tk):
         self.journal.configure(state="disabled")
 
     def _quitter(self) -> None:
-        self._sauver_params()
         self.destroy()
 
 

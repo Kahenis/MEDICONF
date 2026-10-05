@@ -78,7 +78,7 @@ class ConvertisseurApp(tk.Tk):
         self.onglet_principal = ttk.Frame(nb)
         self.onglet_params = ttk.Frame(nb)
         nb.add(self.onglet_principal, text="  Conversion  ")
-        nb.add(self.onglet_params, text="  Param\u00e8tres  ")
+        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._appliquer_cases())
         self._onglet_principal()
         self._onglet_params()
         self._recharger_params()
@@ -94,17 +94,50 @@ class ConvertisseurApp(tk.Tk):
                 self.entree_cible.insert(0, chemin)
         except Exception:
             pass
-        self.var_sous.set(bool(self.params.parcourir_sous_dossiers))
-        self.var_arbo.set(bool(self.params.conserver_arborescence))
-        self.var_comp.set(bool(self.params.compression))
+        self.var_sous.set(1 if self.params.parcourir_sous_dossiers else 0)
+        self.var_arbo.set(1 if self.params.conserver_arborescence else 0)
+        self.var_comp.set(1 if self.params.compression else 0)
+        self._cases = {
+            "sous": bool(self.params.parcourir_sous_dossiers),
+            "arbo": bool(self.params.conserver_arborescence),
+            "comp": bool(self.params.compression),
+        }
+        self.after(150, self._appliquer_cases)
         self.var_qualite.set(int(self.params.qualite_compression or 75))
         self.scale_qualite.set(self.var_qualite.get())
         self.lbl_qualite.configure(text=f"{self.var_qualite.get()} %")
         self.var_conflit.set(self.params.conflit or "renommer")
         self.var_theme.set(self.params.theme or "basic")
         themes.appliquer(self, self.var_theme.get())
+        self._appliquer_cases()
+        self._log("Paramètres repris : sous-dossiers=" + ("oui" if self._cases["sous"] else "non") + ", arborescence=" + ("oui" if self._cases["arbo"] else "non") + ", compression=" + ("oui" if self._cases["comp"] else "non"))
+
+    def _noter_case(self, cle) -> None:
+        self._cases[cle] = not self._cases.get(cle, False)
+        if cle == "sous":
+            self.var_sous.set(1 if self._cases[cle] else 0)
+            self._basculer_sous_dossiers()
+
+    def _appliquer_cases(self) -> None:
+        for case, cle, var in (
+            (self.case_sous, "sous", self.var_sous),
+            (self.case_arbo, "arbo", self.var_arbo),
+            (self.case_comp, "comp", self.var_comp),
+        ):
+            actif = bool(self._cases.get(cle))
+            var.set(1 if actif else 0)
+            try:
+                case.configure(command="")
+                if actif:
+                    case.select()
+                else:
+                    case.deselect()
+            except Exception:
+                pass
+        self.case_sous.configure(command=lambda: self._noter_case("sous"))
+        self.case_arbo.configure(command=lambda: self._noter_case("arbo"))
+        self.case_comp.configure(command=lambda: self._noter_case("comp"))
         self._marquer_radios()
-        self._log("Paramètres repris : sous-dossiers=" + ("oui" if self.params.parcourir_sous_dossiers else "non") + ", arborescence=" + ("oui" if self.params.conserver_arborescence else "non") + ", compression=" + ("oui" if self.params.compression else "non"))
 
     def _marquer_radios(self) -> None:
         def walk(w):
@@ -135,15 +168,20 @@ class ConvertisseurApp(tk.Tk):
         milieu.columnconfigure(1, weight=1)
         opts = ttk.LabelFrame(milieu, text=" Options de parcours et de conversion ", padding=12)
         opts.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self.var_sous = tk.BooleanVar(value=bool(self.params.parcourir_sous_dossiers))
-        self.case_sous = tk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._basculer_sous_dossiers, anchor="w")
+        self.var_sous = tk.IntVar(value=1 if self.params.parcourir_sous_dossiers else 0)
+        self.case_sous = tk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, onvalue=1, offvalue=0, anchor="w", command=lambda: self._noter_case("sous"))
         self.case_sous.pack(fill="x", pady=3)
-        self.var_arbo = tk.BooleanVar(value=bool(self.params.conserver_arborescence))
-        self.case_arbo = tk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, anchor="w")
+        self.var_arbo = tk.IntVar(value=1 if self.params.conserver_arborescence else 0)
+        self.case_arbo = tk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, onvalue=1, offvalue=0, anchor="w", command=lambda: self._noter_case("arbo"))
         self.case_arbo.pack(fill="x", pady=3)
-        self.var_comp = tk.BooleanVar(value=bool(self.params.compression))
-        self.case_comp = tk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, anchor="w")
+        self.var_comp = tk.IntVar(value=1 if self.params.compression else 0)
+        self.case_comp = tk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, onvalue=1, offvalue=0, anchor="w", command=lambda: self._noter_case("comp"))
         self.case_comp.pack(fill="x", pady=3)
+        self._cases = {
+            "sous": bool(self.params.parcourir_sous_dossiers),
+            "arbo": bool(self.params.conserver_arborescence),
+            "comp": bool(self.params.compression),
+        }
         qligne = ttk.Frame(opts)
         qligne.pack(fill="x", pady=8)
         ttk.Label(qligne, text="Qualité de compression :").pack(side="left")
@@ -244,10 +282,10 @@ class ConvertisseurApp(tk.Tk):
 
     def _sauver_params(self) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()
-        self.params.parcourir_sous_dossiers = bool(self.var_sous.get())
-        self.params.compression = bool(self.var_comp.get())
+        self.params.parcourir_sous_dossiers = bool(self._cases.get("sous"))
+        self.params.compression = bool(self._cases.get("comp"))
         self.params.qualite_compression = int(float(self.scale_qualite.get()))
-        self.params.conserver_arborescence = bool(self.var_arbo.get())
+        self.params.conserver_arborescence = bool(self._cases.get("arbo"))
         self.params.conflit = self.var_conflit.get()
         self.params.theme = self.var_theme.get()
         try:

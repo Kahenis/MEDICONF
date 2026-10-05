@@ -81,7 +81,7 @@ class ConvertisseurApp(tk.Tk):
         nb.add(self.onglet_params, text="  Param\u00e8tres  ")
         self._onglet_principal()
         self._onglet_params()
-        self.after(100, self._recharger_params)
+        self._recharger_params()
 
     def _recharger_params(self) -> None:
         from parametres import fichier_config
@@ -113,9 +113,15 @@ class ConvertisseurApp(tk.Tk):
 
     def _cocher(self, case, actif) -> None:
         try:
-            case.state(["selected"] if actif else ["!selected"])
+            if actif:
+                case.select()
+            else:
+                case.deselect()
         except Exception:
-            pass
+            try:
+                case.state(["selected"] if actif else ["!selected"])
+            except Exception:
+                pass
 
     def _onglet_params(self) -> None:
         p = self.onglet_params
@@ -129,55 +135,59 @@ class ConvertisseurApp(tk.Tk):
         self.entree_cible.pack(side="left", fill="x", expand=True, padx=(0, 8))
         ttk.Button(ligne, text="Parcourir\u2026", command=self._parcourir_cible).pack(side="left", padx=(0, 8))
         ttk.Button(ligne, text="Choisir ce dossier", command=self._valider_cible).pack(side="left")
-        opts = ttk.LabelFrame(p, text=" Options de parcours et de conversion ", padding=12)
-        opts.pack(fill="x", padx=16, pady=8)
-        self.var_sous = tk.BooleanVar(value=self.params.parcourir_sous_dossiers)
-        self.case_sous = ttk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._basculer_sous_dossiers)
-        self.case_sous.pack(anchor="w", pady=3)
-        self.var_arbo = tk.BooleanVar(value=self.params.conserver_arborescence)
-        self.case_arbo = ttk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, command=self._sauver_params)
-        self.case_arbo.pack(anchor="w", pady=3)
-        self.var_comp = tk.BooleanVar(value=self.params.compression)
-        self.case_comp = ttk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, command=self._sauver_params)
-        self.case_comp.pack(anchor="w", pady=3)
+        milieu = ttk.Frame(p)
+        milieu.pack(fill="x", padx=16, pady=8)
+        milieu.columnconfigure(0, weight=1)
+        milieu.columnconfigure(1, weight=1)
+        opts = ttk.LabelFrame(milieu, text=" Options de parcours et de conversion ", padding=12)
+        opts.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.var_sous = tk.BooleanVar(value=bool(self.params.parcourir_sous_dossiers))
+        self.case_sous = tk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._basculer_sous_dossiers, anchor="w")
+        self.case_sous.pack(fill="x", pady=3)
+        self.var_arbo = tk.BooleanVar(value=bool(self.params.conserver_arborescence))
+        self.case_arbo = tk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, anchor="w")
+        self.case_arbo.pack(fill="x", pady=3)
+        self.var_comp = tk.BooleanVar(value=bool(self.params.compression))
+        self.case_comp = tk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, anchor="w")
+        self.case_comp.pack(fill="x", pady=3)
         qligne = ttk.Frame(opts)
         qligne.pack(fill="x", pady=8)
-        ttk.Label(qligne, text="Qualit\u00e9 de compression :").pack(side="left")
+        ttk.Label(qligne, text="Qualité de compression :").pack(side="left")
         self.var_qualite = tk.IntVar(value=self.params.qualite_compression)
         self.lbl_qualite = ttk.Label(qligne, text=f"{self.var_qualite.get()} %")
         self.lbl_qualite.pack(side="right")
         self.scale_qualite = ttk.Scale(opts, from_=40, to=95, orient="horizontal", command=self._chg_qualite)
         self.scale_qualite.set(self.params.qualite_compression)
         self.scale_qualite.pack(fill="x", pady=(0, 8))
-        conflit = ttk.LabelFrame(p, text=" Si un PDF du m\u00eame nom existe d\u00e9j\u00e0 ", padding=12)
-        conflit.pack(fill="x", padx=16, pady=8)
-        self.var_conflit = tk.StringVar(value=self.params.conflit)
+        conflit = ttk.LabelFrame(milieu, text=" Si un PDF du même nom existe déjà ", padding=12)
+        conflit.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        self.var_conflit = tk.StringVar(value=self.params.conflit or "renommer")
         for val, txt in (
-            ("renommer", "Renommer automatiquement (fichier_2.pdf, fichier_3.pdf\u2026)"),
-            ("ecraser", "\u00c9craser le fichier existant"),
-            ("demander", "Demander \u00e0 chaque fois"),
+            ("renommer", "Renommer automatiquement"),
+            ("ecraser", "Écraser le fichier existant"),
+            ("demander", "Demander à chaque fois"),
         ):
-            ttk.Radiobutton(conflit, text=txt, value=val, variable=self.var_conflit, command=self._sauver_params).pack(anchor="w", pady=2)
-        theme = ttk.LabelFrame(p, text=" Thème de l'interface ", padding=12)
+            ttk.Radiobutton(conflit, text=txt, value=val, variable=self.var_conflit).pack(anchor="w", pady=2)
+        theme = ttk.LabelFrame(p, text=" Thème de l'interface ", padding=8)
         theme.pack(fill="x", padx=16, pady=8)
         self.var_theme = tk.StringVar(value=getattr(self.params, "theme", "basic") or "basic")
+        ligne_theme = ttk.Frame(theme)
+        ligne_theme.pack(fill="x")
         for val, txt in (
-            ("basic", "Basic : l'apparence actuelle"),
-            ("medical", "Médical : bleu, rouge et blanc, boutons en relief"),
-            ("pro", "Pro : couleurs de style HelloDoc"),
+            ("basic", "Basic"),
+            ("medical", "Médical"),
+            ("pro", "Pro HelloDoc"),
         ):
-            ttk.Radiobutton(theme, text=txt, value=val, variable=self.var_theme, command=self._changer_theme).pack(anchor="w", pady=2)
-        ttk.Label(p, text="Les paramètres sont enregistrés automatiquement.", style="Info.TLabel").pack(anchor="w", padx=16, pady=8)
+            ttk.Radiobutton(ligne_theme, text=txt, value=val, variable=self.var_theme, command=self._changer_theme).pack(side="left", padx=12)
+        ttk.Button(p, text="Enregistrer", command=self._sauver_params).pack(anchor="w", padx=16, pady=8)
 
     def _changer_theme(self) -> None:
         themes.appliquer(self, self.var_theme.get())
-        self._sauver_params()
 
     def _chg_qualite(self, _evt=None) -> None:
         v = int(float(self.scale_qualite.get()))
         self.var_qualite.set(v)
         self.lbl_qualite.configure(text=f"{v} %")
-        self._sauver_params()
 
     def _ecrire_cible(self, chemin: str) -> None:
         chemin = (chemin or "").strip().strip('"')
@@ -215,7 +225,6 @@ class ConvertisseurApp(tk.Tk):
 
     def _appliquer_sous_dossiers(self) -> None:
         actif = self._sous_dossiers_demandes()
-        self._sauver_params()
         if getattr(self, "source_path", None) and Path(self.source_path).is_dir():
             self.fichiers = self._scanner(self.source_path)
             self._rafraichir_liste()
@@ -251,6 +260,7 @@ class ConvertisseurApp(tk.Tk):
             self.params.sauvegarder()
             from parametres import fichier_config
             self._log("Paramètres enregistrés : " + str(fichier_config()))
+            messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.")
         except Exception as e:
             self._log("Paramètres non enregistrés : " + str(e), erreur=True)
 

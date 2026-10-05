@@ -46,7 +46,7 @@ class MenuDemarrage(tk.Tk):
             except Exception:
                 messagebox.showerror("MEDICONF", traceback.format_exc()[-1200:])
             try:
-                fen.after(200, fen._recharger_params)
+                fen._recharger_params()
             except Exception:
                 pass
             fen.lift()

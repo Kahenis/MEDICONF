@@ -97,13 +97,25 @@ class ConvertisseurApp(tk.Tk):
         self.var_sous.set(bool(self.params.parcourir_sous_dossiers))
         self.var_arbo.set(bool(self.params.conserver_arborescence))
         self.var_comp.set(bool(self.params.compression))
+        self._cocher(self.case_sous, self.params.parcourir_sous_dossiers)
+        self._cocher(self.case_arbo, self.params.conserver_arborescence)
+        self._cocher(self.case_comp, self.params.compression)
         self.var_qualite.set(int(self.params.qualite_compression or 75))
         self.scale_qualite.set(self.var_qualite.get())
         self.lbl_qualite.configure(text=f"{self.var_qualite.get()} %")
         self.var_conflit.set(self.params.conflit or "renommer")
         self.var_theme.set(self.params.theme or "basic")
         themes.appliquer(self, self.var_theme.get())
+        self._cocher(self.case_sous, self.params.parcourir_sous_dossiers)
+        self._cocher(self.case_arbo, self.params.conserver_arborescence)
+        self._cocher(self.case_comp, self.params.compression)
         self._log("Paramètres repris : " + str(fichier_config()))
+
+    def _cocher(self, case, actif) -> None:
+        try:
+            case.state(["selected"] if actif else ["!selected"])
+        except Exception:
+            pass
 
     def _onglet_params(self) -> None:
         p = self.onglet_params
@@ -120,11 +132,14 @@ class ConvertisseurApp(tk.Tk):
         opts = ttk.LabelFrame(p, text=" Options de parcours et de conversion ", padding=12)
         opts.pack(fill="x", padx=16, pady=8)
         self.var_sous = tk.BooleanVar(value=self.params.parcourir_sous_dossiers)
-        ttk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._basculer_sous_dossiers).pack(anchor="w", pady=3)
+        self.case_sous = ttk.Checkbutton(opts, text="Parcourir les sous-dossiers", variable=self.var_sous, command=self._basculer_sous_dossiers)
+        self.case_sous.pack(anchor="w", pady=3)
         self.var_arbo = tk.BooleanVar(value=self.params.conserver_arborescence)
-        ttk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, command=self._sauver_params).pack(anchor="w", pady=3)
+        self.case_arbo = ttk.Checkbutton(opts, text="Conserver l'arborescence dans le dossier cible", variable=self.var_arbo, command=self._sauver_params)
+        self.case_arbo.pack(anchor="w", pady=3)
         self.var_comp = tk.BooleanVar(value=self.params.compression)
-        ttk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, command=self._sauver_params).pack(anchor="w", pady=3)
+        self.case_comp = ttk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, command=self._sauver_params)
+        self.case_comp.pack(anchor="w", pady=3)
         qligne = ttk.Frame(opts)
         qligne.pack(fill="x", pady=8)
         ttk.Label(qligne, text="Qualit\u00e9 de compression :").pack(side="left")

@@ -78,6 +78,7 @@ class ConvertisseurApp(tk.Tk):
         self.onglet_principal = ttk.Frame(nb)
         self.onglet_params = ttk.Frame(nb)
         nb.add(self.onglet_principal, text="  Conversion  ")
+        nb.add(self.onglet_params, text="  Paramètres  ")
         self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._appliquer_cases())
         self._onglet_principal()
         self._onglet_params()

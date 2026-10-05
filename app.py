@@ -214,6 +214,8 @@ class ConvertisseurApp(tk.Tk):
             self.entree_cible.insert(0, r"C:\Hellodoc\scans")
         except Exception:
             pass
+
+    def _chg_qualite(self, _evt=None) -> None:
         v = int(float(self.scale_qualite.get()))
         self.var_qualite.set(v)
         self.lbl_qualite.configure(text=f"{v} %")

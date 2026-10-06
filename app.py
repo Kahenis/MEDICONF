@@ -266,6 +266,8 @@ class ConvertisseurApp(tk.Tk):
             return
         self._afficher_chemin_enregistre()
         self._log("Chemin de destination enregistré : " + d)
+
+    def _basculer_sous_dossiers(self) -> None:
         self.after(80, self._appliquer_sous_dossiers)
 
     def _appliquer_sous_dossiers(self) -> None:
@@ -274,26 +276,6 @@ class ConvertisseurApp(tk.Tk):
             self.fichiers = self._scanner(self.source_path)
             self._rafraichir_liste()
             self._log(str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if actif else "non"))
-
-    def _valider_cible(self) -> None:
-        d = self.var_cible.get().strip().strip('"')
-        if not d:
-            self._boite(messagebox.showwarning, "saisie vide")
-            return
-        self.var_cible.set(d)
-        try:
-            self.entree_cible.delete(0, "end")
-            self.entree_cible.insert(0, d)
-        except Exception:
-            pass
-        self.params.dossier_cible = d
-        try:
-            self.params.sauvegarder()
-        except Exception as e:
-            self._log("Chemin non enregistré : " + str(e), erreur=True)
-            return
-        self._afficher_chemin_enregistre()
-        self._log("Chemin de destination enregistré : " + d)
 
     def _sauver_params(self, afficher: bool = True) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()

@@ -244,7 +244,7 @@ class ConvertisseurApp(tk.Tk):
         from patches_ui import dialogue_explorateur
         d = dialogue_explorateur(self, "Choisir le dossier cible", True, afficher_fichiers=True)
         if not d:
-            messagebox.showwarning(APP_TITRE, "L'explorateur n'a pas renvoyé de chemin.", parent=self)
+            self._boite(messagebox.showwarning, "L'explorateur n'a pas renvoyé de chemin.")
             return
         self._ecrire_cible(d)
         self.after(200, lambda c=d: self._ecrire_cible(c))
@@ -252,10 +252,10 @@ class ConvertisseurApp(tk.Tk):
     def _valider_cible(self) -> None:
         d = self.var_cible.get().strip()
         if not d:
-            messagebox.showwarning(APP_TITRE, "Indiquez un dossier cible.")
+            self._boite(messagebox.showwarning, "Indiquez un dossier cible.")
             return
         self._ecrire_cible(d)
-        messagebox.showinfo(APP_TITRE, "Dossier cible enregistré :\n" + d, parent=self)
+        self._boite(messagebox.showinfo, "Dossier cible enregistré :\n" + d)
 
     def _basculer_sous_dossiers(self) -> None:
         self.after(80, self._appliquer_sous_dossiers)
@@ -270,20 +270,20 @@ class ConvertisseurApp(tk.Tk):
     def _valider_cible(self) -> None:
         d = self.var_cible.get().strip()
         if not d:
-            messagebox.showwarning(APP_TITRE, "Indiquez un dossier cible.")
+            self._boite(messagebox.showwarning, "Indiquez un dossier cible.")
             return
         p = Path(d)
         try:
             p.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            messagebox.showerror(APP_TITRE, f"Impossible d'utiliser ce dossier :\n{e}")
+            self._boite(messagebox.showerror, f"Impossible d'utiliser ce dossier :\n{e}")
             return
         if not p.is_dir():
-            messagebox.showerror(APP_TITRE, "Ce chemin n'est pas un dossier valide.")
+            self._boite(messagebox.showerror, "Ce chemin n'est pas un dossier valide.")
             return
         self.params.dossier_cible = str(p)
         self._sauver_params()
-        messagebox.showinfo(APP_TITRE, f"Dossier cible enregistr\u00e9 :\n{p}")
+        self._boite(messagebox.showinfo, f"Dossier cible enregistré :\n{p}")
 
     def _sauver_params(self, afficher: bool = True) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()
@@ -302,7 +302,7 @@ class ConvertisseurApp(tk.Tk):
                 + " — " + str(fichier_config())
             )
             if afficher:
-                messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.\nSous-dossiers : " + ("oui" if self.params.parcourir_sous_dossiers else "non") + "\nArborescence : " + ("oui" if self.params.conserver_arborescence else "non") + "\nCompression : " + ("oui" if self.params.compression else "non"))
+                self._boite(messagebox.showinfo, "Paramètres enregistrés.\nSous-dossiers : " + ("oui" if self.params.parcourir_sous_dossiers else "non") + "\nArborescence : " + ("oui" if self.params.conserver_arborescence else "non") + "\nCompression : " + ("oui" if self.params.compression else "non"))
             self._afficher_chemin_enregistre()
         except Exception as e:
             self._log("Paramètres non enregistrés : " + str(e), erreur=True)
@@ -365,7 +365,7 @@ class ConvertisseurApp(tk.Tk):
         self._log("Parcourir un fichier ou s\u00e9lectionner un dossier source pour commencer.")
 
     def _parcourir_source(self) -> None:
-        if messagebox.askquestion(APP_TITRE, "Oui = dossier\nNon = fichier unique", icon="question") == "yes":
+        if self._boite(messagebox.askquestion, "Oui = dossier\nNon = fichier unique", icon="question") == "yes":
             self._choisir_dossier_source()
             return
         types = [("Fichiers convertibles", "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp *.ico *.jfif *.txt *.rtf *.doc *.docx *.odt"), ("Tous", "*.*")]
@@ -381,7 +381,7 @@ class ConvertisseurApp(tk.Tk):
     def _charger_source(self, path: Path) -> None:
         path = Path(path)
         if not path.exists():
-            messagebox.showerror(APP_TITRE, "Chemin introuvable.")
+            self._boite(messagebox.showerror, "Chemin introuvable.")
             return
         self.source_path = path
         if path.is_file():
@@ -556,20 +556,20 @@ class ConvertisseurApp(tk.Tk):
     def _cible_ok(self) -> Path | None:
         d = self.var_cible.get().strip() or self.params.dossier_cible
         if not d:
-            messagebox.showwarning(APP_TITRE, "D\u00e9finissez un dossier cible dans Param\u00e8tres, puis \u00ab Choisir ce dossier \u00bb.")
+            self._boite(messagebox.showwarning, "Définissez un dossier cible dans Paramètres, puis « Choisir ce dossier ».")
             return None
         p = Path(d)
         try:
             p.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            messagebox.showerror(APP_TITRE, f"Dossier cible invalide :\n{e}")
+            self._boite(messagebox.showerror, f"Dossier cible invalide :\n{e}")
             return None
         return p
 
     def _resoudre_conflit(self, dest: Path, source: Path) -> Path | None:
         if not dest.exists() or self.var_conflit.get() != "demander":
             return dest
-        r = messagebox.askyesnocancel(APP_TITRE, f"Le fichier existe d\u00e9j\u00e0 :\n{dest.name}\n\nOui = \u00e9craser\nNon = renommer\nAnnuler = ignorer")
+        r = self._boite(messagebox.askyesnocancel, f"Le fichier existe déjà :\n{dest.name}\n\nOui = écraser\nNon = renommer\nAnnuler = ignorer")
         if r is None:
             return None
         if r:
@@ -590,10 +590,10 @@ class ConvertisseurApp(tk.Tk):
             self._log(f"OK  {source.name}  \u2192  {dest2}")
             if warn:
                 self._log(f"    note : {warn}")
-            messagebox.showinfo(APP_TITRE, f"PDF enregistr\u00e9 :\n{dest2}")
+            self._boite(messagebox.showinfo, f"PDF enregistré :\n{dest2}")
         except Exception as e:
             self._log(f"ERREUR  {source.name} : {e}")
-            messagebox.showerror(APP_TITRE, f"Conversion impossible :\n{e}")
+            self._boite(messagebox.showerror, f"Conversion impossible :\n{e}")
 
     def _marquer(self, source: Path, etat: str) -> None:
         cle = str(source)
@@ -612,6 +612,51 @@ class ConvertisseurApp(tk.Tk):
         except Exception:
             pass
 
+    def _ancre_dialogue(self) -> tk.Toplevel:
+        self.update_idletasks()
+        x = self.winfo_rootx() + max(self.winfo_width(), 200) // 2
+        y = self.winfo_rooty() + max(self.winfo_height(), 160) // 2
+        ancre = tk.Toplevel(self)
+        ancre.overrideredirect(True)
+        ancre.geometry(f"1x1+{x}+{y}")
+        try:
+            ancre.attributes("-alpha", 0.0)
+        except tk.TclError:
+            ancre.withdraw()
+        ancre.update_idletasks()
+        return ancre
+
+    def _centrer(self, fen: tk.Toplevel, largeur: int, hauteur: int) -> None:
+        self.update_idletasks()
+        x = self.winfo_rootx() + max(self.winfo_width() - largeur, 0) // 2
+        y = self.winfo_rooty() + max(self.winfo_height() - hauteur, 0) // 2
+        fen.geometry(f"{largeur}x{hauteur}+{x}+{y}")
+
+    def _boite(self, fonction, texte: str, **kw):
+        ancre = self._ancre_dialogue()
+        try:
+            return fonction(APP_TITRE, texte, parent=ancre, **kw)
+        finally:
+            try:
+                ancre.destroy()
+            except tk.TclError:
+                pass
+
+    def _decocher_converti(self, source: Path) -> None:
+        cle = str(source)
+        actuel = self.vars_coche.get(cle)
+        if hasattr(actuel, "set"):
+            actuel.set(False)
+        self.vars_coche[cle] = False
+        for enfant in self.liste_frame.winfo_children():
+            for case in enfant.winfo_children():
+                if getattr(case, "_chemin_source", "") == cle:
+                    try:
+                        case.state(["!selected"])
+                    except Exception:
+                        pass
+                    return
+
     def _ouvrir_parametres(self) -> None:
         try:
             self.notebook.select(self.onglet_params)
@@ -628,13 +673,13 @@ class ConvertisseurApp(tk.Tk):
             return
         fichiers = self._selectionnes()
         if not fichiers:
-            messagebox.showinfo(APP_TITRE, "Aucun fichier coché.")
+            self._boite(messagebox.showinfo, "Aucun fichier coché.")
             return
         cible = self._cible_ok()
         if cible is None:
             self._ouvrir_parametres()
             return
-        if not messagebox.askyesno(APP_TITRE, f"Convertir {len(fichiers)} fichier(s) vers :\n{cible} ?"):
+        if not self._boite(messagebox.askyesno, f"Convertir {len(fichiers)} fichier(s) vers :\n{cible} ?"):
             return
         self._sauver_params(afficher=False)
         self.annuler_conversion = False
@@ -682,6 +727,7 @@ class ConvertisseurApp(tk.Tk):
                             msg += f"  ({warn})"
                         self._log(msg)
                         self._marquer(source, "ok")
+                        self._decocher_converti(source)
                         self.progress.configure(value=self.progress["value"] + 1)
                     elif ev[0] == "err":
                         self._log(f"ERREUR  {ev[1].name} : {ev[2]}", erreur=True)
@@ -714,6 +760,7 @@ class ConvertisseurApp(tk.Tk):
         pop.geometry("460x160")
         pop.transient(self)
         pop.resizable(False, False)
+        self._centrer(pop, 460, 160)
         ttk.Label(pop, text="Fichier en cours :").pack(anchor="w", padx=16, pady=(14, 4))
         self.lbl_conv_fichier = ttk.Label(pop, text="Préparation…", wraplength=420)
         self.lbl_conv_fichier.pack(anchor="w", padx=16)
@@ -744,7 +791,7 @@ class ConvertisseurApp(tk.Tk):
     def _ouvrir_cible(self) -> None:
         d = self.var_cible.get().strip() or self.params.dossier_cible
         if not d or not Path(d).is_dir():
-            messagebox.showwarning(APP_TITRE, "Aucun dossier cible valide.")
+            self._boite(messagebox.showwarning, "Aucun dossier cible valide.")
             return
         if sys.platform.startswith("win"):
             os.startfile(d)  # type: ignore

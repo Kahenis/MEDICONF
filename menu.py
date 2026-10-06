@@ -54,10 +54,15 @@ class MenuDemarrage(tk.Tk):
             self.deiconify()
             messagebox.showerror("MEDICONF", traceback.format_exc()[-1200:])
     def _ouvrir_texte(self):
+        if not messagebox.askyesno(
+            "MEDICONF",
+            "Cette fonction n'est pas encore totalement fonctionnelle et est toujours en développement. Voulez vous y acceder quand même ?",
+        ):
+            return
         try:
-            from reception import ReceptionApp
+            from partie2 import Partie2App
             self.withdraw()
-            ReceptionApp(self)
+            Partie2App(self)
         except Exception:
             self.deiconify()
             messagebox.showerror("MEDICONF", traceback.format_exc()[-1200:])

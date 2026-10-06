@@ -2,6 +2,7 @@
 """Partie 2 : interface de conversion intelligente des PDF scannés vers texte."""
 from __future__ import annotations
 
+import json
 import os
 import tkinter as tk
 from pathlib import Path
@@ -11,7 +12,43 @@ from PIL import ImageTk
 
 import apercu_pdf
 import themes
-from parametres import Parametres
+
+
+def fichier_config_partie2() -> Path:
+    base = os.environ.get("APPDATA") or os.environ.get("XDG_CONFIG_HOME")
+    if not base:
+        base = str(Path.home() / "AppData" / "Roaming")
+    return Path(base) / "MEDICONF" / "parametres_partie2.json"
+
+
+def charger_partie2() -> dict:
+    chemin = fichier_config_partie2()
+    if not chemin.is_file():
+        return {"dossier_cible": "", "parcourir_sous_dossiers": False}
+    try:
+        data = json.loads(chemin.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {"dossier_cible": "", "parcourir_sous_dossiers": False}
+    return {
+        "dossier_cible": str(data.get("dossier_cible") or ""),
+        "parcourir_sous_dossiers": bool(data.get("parcourir_sous_dossiers")),
+    }
+
+
+def sauver_partie2(dossier_cible: str, sous_dossiers: bool) -> Path:
+    chemin = fichier_config_partie2()
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    chemin.write_text(
+        json.dumps(
+            {"dossier_cible": dossier_cible, "parcourir_sous_dossiers": bool(sous_dossiers)},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return chemin
+
+APP_TITRE = "MEDICONF - Conversion intelligente vers texte - Par JF Guilard"
 
 APP_TITRE = "MEDICONF - Conversion intelligente vers texte - Par JF Guilard"
 COULEUR_FOND = "#f4f6f8"
@@ -67,7 +104,7 @@ class Partie2App(tk.Toplevel):
         self.geometry("1180x720")
         self.minsize(960, 600)
         self.configure(bg=COULEUR_FOND)
-        self.params = Parametres.charger()
+        self.params = charger_partie2()
         self.source_path: Path | None = None
         self.fichiers: list[Path] = []
         self.vars_coche: dict[str, bool] = {}
@@ -145,11 +182,16 @@ class Partie2App(tk.Toplevel):
         ttk.Label(bloc, text="Chemin du dossier où seront enregistrés les textes :").pack(anchor="w")
         ligne = ttk.Frame(bloc)
         ligne.pack(fill="x", pady=6)
-        self.var_cible = tk.StringVar(value=self.params.dossier_cible)
+        self.var_cible = tk.StringVar(value=self.params["dossier_cible"])
         self.entree = ttk.Entry(ligne, textvariable=self.var_cible)
         self.entree.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        ttk.Button(ligne, text="Chemin courant", command=self._hellodoc).pack(side="left")
-        self.var_sous = tk.BooleanVar(value=bool(self.params.parcourir_sous_dossiers))
+        ttk.Button(ligne, text="Parcourir…", command=self._parcourir_cible).pack(side="left", padx=(0, 8))
+        ttk.Button(ligne, text="Choisir ce dossier", command=self._choisir_cible).pack(side="left")
+        hello = ttk.Frame(bloc)
+        hello.pack(fill="x", pady=(8, 0))
+        ttk.Label(hello, text="Sélectionner la boite de réception Hellodoc").pack(side="left")
+        ttk.Button(hello, text="Chemin courant", command=self._hellodoc).pack(side="left", padx=12)
+        self.var_sous = tk.BooleanVar(value=bool(self.params["parcourir_sous_dossiers"]))
         tk.Checkbutton(p, text="Parcourir les sous-dossiers", variable=self.var_sous, anchor="w").pack(anchor="w", padx=16, pady=8)
         ttk.Button(p, text="Enregistrer", command=self._sauver).pack(anchor="w", padx=16)
 
@@ -159,16 +201,35 @@ class Partie2App(tk.Toplevel):
         self.journal.see("end")
         self.journal.configure(state="disabled")
 
-    def _hellodoc(self) -> None:
-        self.var_cible.set(r"C:\Hellodoc\scans")
+    def _ecrire_cible(self, chemin: str) -> None:
+        chemin = (chemin or "").strip().strip('"')
+        if not chemin:
+            return
+        self.var_cible.set(chemin)
         self.entree.delete(0, "end")
-        self.entree.insert(0, r"C:\Hellodoc\scans")
+        self.entree.insert(0, chemin)
+
+    def _parcourir_cible(self) -> None:
+        from patches_ui import dialogue_explorateur
+        d = dialogue_explorateur(self, "Choisir le dossier de destination", True, afficher_fichiers=True)
+        if d:
+            self._ecrire_cible(d)
+
+    def _choisir_cible(self) -> None:
+        d = self.var_cible.get().strip()
+        if not d:
+            messagebox.showwarning(APP_TITRE, "Indiquez un dossier de destination.", parent=self)
+            return
+        self._ecrire_cible(d)
+        self._sauver()
+
+    def _hellodoc(self) -> None:
+        self._ecrire_cible(r"C:\Hellodoc\scans")
 
     def _sauver(self) -> None:
-        self.params.dossier_cible = self.var_cible.get().strip()
-        self.params.parcourir_sous_dossiers = bool(self.var_sous.get())
-        self.params.sauvegarder()
-        messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.", parent=self)
+        chemin = sauver_partie2(self.var_cible.get().strip(), bool(self.var_sous.get()))
+        self.params = charger_partie2()
+        messagebox.showinfo(APP_TITRE, "Paramètres de la partie 2 enregistrés.\n" + str(chemin), parent=self)
 
     def _parcourir(self) -> None:
         from patches_ui import dialogue_explorateur

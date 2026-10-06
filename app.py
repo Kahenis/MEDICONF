@@ -280,7 +280,7 @@ class ConvertisseurApp(tk.Tk):
         self._sauver_params()
         messagebox.showinfo(APP_TITRE, f"Dossier cible enregistr\u00e9 :\n{p}")
 
-    def _sauver_params(self) -> None:
+    def _sauver_params(self, afficher: bool = True) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()
         self.params.parcourir_sous_dossiers = bool(self._cases.get("sous"))
         self.params.compression = bool(self._cases.get("comp"))
@@ -296,7 +296,8 @@ class ConvertisseurApp(tk.Tk):
                 + ", compression=" + ("oui" if self.params.compression else "non")
                 + " — " + str(fichier_config())
             )
-            messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.\nSous-dossiers : " + ("oui" if self.params.parcourir_sous_dossiers else "non") + "\nArborescence : " + ("oui" if self.params.conserver_arborescence else "non") + "\nCompression : " + ("oui" if self.params.compression else "non"))
+            if afficher:
+                messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.\nSous-dossiers : " + ("oui" if self.params.parcourir_sous_dossiers else "non") + "\nArborescence : " + ("oui" if self.params.conserver_arborescence else "non") + "\nCompression : " + ("oui" if self.params.compression else "non"))
         except Exception as e:
             self._log("Paramètres non enregistrés : " + str(e), erreur=True)
 
@@ -622,7 +623,7 @@ class ConvertisseurApp(tk.Tk):
             return
         if not messagebox.askyesno(APP_TITRE, "Convertir les fichiers cochés :\n" + "\n".join(p.name for p in fichiers) + f"\n\nvers :\n{cible} ?"):
             return
-        self._sauver_params()
+        self._sauver_params(afficher=False)
         self.conversion_en_cours = True
         self.btn_convertir.configure(state="disabled")
         self.progress.configure(maximum=len(fichiers), value=0)

@@ -422,6 +422,10 @@ class ConvertisseurApp(tk.Tk):
             ligne.pack(fill="x", anchor="w", pady=2)
             case = ttk.Checkbutton(ligne, variable=var)
             case.pack(side="left")
+            if actuel:
+                case.select()
+            else:
+                case.deselect()
             case._chemin_source = cle
             case.bind("<ButtonRelease-1>", lambda _e, c=cle: self.after(60, lambda: self._lire_case(c)))
             couleur = {"ok": "#15803d", "erreur": "#b91c1c"}.get(self.etats_fichier.get(cle, ""), "#1f4e79")
@@ -505,12 +509,12 @@ class ConvertisseurApp(tk.Tk):
         return ""
 
     def _tout_cocher(self) -> None:
-        for p in self._visible():
+        for p in self.fichiers:
             self.vars_coche[str(p)] = True
         self._rafraichir_liste()
 
     def _tout_decocher(self) -> None:
-        for p in self._visible():
+        for p in self.fichiers:
             self.vars_coche[str(p)] = False
         self._rafraichir_liste()
 

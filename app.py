@@ -422,10 +422,6 @@ class ConvertisseurApp(tk.Tk):
             ligne.pack(fill="x", anchor="w", pady=2)
             case = ttk.Checkbutton(ligne, variable=var)
             case.pack(side="left")
-            if actuel:
-                case.select()
-            else:
-                case.deselect()
             case._chemin_source = cle
             case.bind("<ButtonRelease-1>", lambda _e, c=cle: self.after(60, lambda: self._lire_case(c)))
             couleur = {"ok": "#15803d", "erreur": "#b91c1c"}.get(self.etats_fichier.get(cle, ""), "#1f4e79")
@@ -438,6 +434,10 @@ class ConvertisseurApp(tk.Tk):
             chemin_lbl._chemin_source = str(p)
             nom.bind("<Button-1>", self._clic_nom_fichier)
             chemin_lbl.bind("<Button-1>", self._clic_nom_fichier)
+            try:
+                case.state(["selected"] if actuel else ["!selected"])
+            except Exception:
+                pass
         self.zone_drop.update_idletasks()
         self.zone_drop.configure(scrollregion=self.zone_drop.bbox("all"))
         self._log(str(len(self._index_visible)) + " fichier(s) affiché(s)" + (" — sous-dossiers" if self.var_sous.get() else ""))

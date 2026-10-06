@@ -49,8 +49,6 @@ def sauver_partie2(dossier_cible: str, sous_dossiers: bool) -> Path:
     return chemin
 
 APP_TITRE = "MEDICONF - Conversion intelligente vers texte - Par JF Guilard"
-
-APP_TITRE = "MEDICONF - Conversion intelligente vers texte - Par JF Guilard"
 COULEUR_FOND = "#f4f6f8"
 COULEUR_ZONE = "#ffffff"
 

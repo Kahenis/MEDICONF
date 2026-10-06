@@ -248,13 +248,24 @@ class ConvertisseurApp(tk.Tk):
         self._ecrire_cible(d)
 
     def _valider_cible(self) -> None:
-        d = self.var_cible.get().strip()
+        d = self.var_cible.get().strip().strip('"')
         if not d:
-            self._boite(messagebox.showwarning, "Indiquez un dossier cible.")
+            self._boite(messagebox.showwarning, "saisie vide")
             return
-        self._ecrire_cible(d)
-
-    def _basculer_sous_dossiers(self) -> None:
+        self.var_cible.set(d)
+        try:
+            self.entree_cible.delete(0, "end")
+            self.entree_cible.insert(0, d)
+        except Exception:
+            pass
+        self.params.dossier_cible = d
+        try:
+            self.params.sauvegarder()
+        except Exception as e:
+            self._log("Chemin non enregistré : " + str(e), erreur=True)
+            return
+        self._afficher_chemin_enregistre()
+        self._log("Chemin de destination enregistré : " + d)
         self.after(80, self._appliquer_sous_dossiers)
 
     def _appliquer_sous_dossiers(self) -> None:
@@ -265,22 +276,24 @@ class ConvertisseurApp(tk.Tk):
             self._log(str(len(self.fichiers)) + " fichier(s), sous-dossiers : " + ("oui" if actif else "non"))
 
     def _valider_cible(self) -> None:
-        d = self.var_cible.get().strip()
+        d = self.var_cible.get().strip().strip('"')
         if not d:
-            self._boite(messagebox.showwarning, "Indiquez un dossier cible.")
+            self._boite(messagebox.showwarning, "saisie vide")
             return
-        p = Path(d)
+        self.var_cible.set(d)
         try:
-            p.mkdir(parents=True, exist_ok=True)
+            self.entree_cible.delete(0, "end")
+            self.entree_cible.insert(0, d)
+        except Exception:
+            pass
+        self.params.dossier_cible = d
+        try:
+            self.params.sauvegarder()
         except Exception as e:
-            self._boite(messagebox.showerror, f"Impossible d'utiliser ce dossier :\n{e}")
+            self._log("Chemin non enregistré : " + str(e), erreur=True)
             return
-        if not p.is_dir():
-            self._boite(messagebox.showerror, "Ce chemin n'est pas un dossier valide.")
-            return
-        self.params.dossier_cible = str(p)
-        self.var_cible.set(str(p))
-        self._log("Dossier cible proposé : " + str(p))
+        self._afficher_chemin_enregistre()
+        self._log("Chemin de destination enregistré : " + d)
 
     def _sauver_params(self, afficher: bool = True) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()

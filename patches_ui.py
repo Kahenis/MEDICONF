@@ -429,7 +429,7 @@ def appliquer(cls) -> None:
             messagebox.showwarning("MEDICONF", "Choisissez d'abord un dossier avec Parcourir.", parent=self)
             return
         if _enregistrer_cible(self, d):
-            messagebox.showinfo("MEDICONF", f"Dossier cible enregistré :\n{d}", parent=self)
+            return
 
     def _parcourir_source(self) -> None:
         type_sel = choisir_type_source(self)

@@ -23,6 +23,13 @@ def choisir_type_source(parent: tk.Tk) -> str | None:
         win.destroy()
     ttk.Button(btns, text="Dossier", command=lambda: setv("dossier")).pack(side="left", padx=8, ipadx=12)
     ttk.Button(btns, text="Fichier", command=lambda: setv("fichier")).pack(side="left", padx=8, ipadx=12)
+    win.update_idletasks()
+    parent.update_idletasks()
+    largeur = max(win.winfo_reqwidth(), 360)
+    hauteur = max(win.winfo_reqheight(), 110)
+    x = parent.winfo_rootx() + max(parent.winfo_width() - largeur, 0) // 2
+    y = parent.winfo_rooty() + max(parent.winfo_height() - hauteur, 0) // 2
+    win.geometry(f"{largeur}x{hauteur}+{x}+{y}")
     win.protocol("WM_DELETE_WINDOW", win.destroy)
     win.grab_set()
     parent.wait_window(win)

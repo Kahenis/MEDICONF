@@ -237,8 +237,7 @@ class ConvertisseurApp(tk.Tk):
         except Exception:
             pass
         self.params.dossier_cible = chemin
-        self._sauver_params()
-        self._log("Dossier cible : " + chemin)
+        self._log("Dossier cible proposé : " + chemin)
 
     def _parcourir_cible(self) -> None:
         from patches_ui import dialogue_explorateur
@@ -247,7 +246,6 @@ class ConvertisseurApp(tk.Tk):
             self._boite(messagebox.showwarning, "L'explorateur n'a pas renvoyé de chemin.")
             return
         self._ecrire_cible(d)
-        self.after(200, lambda c=d: self._ecrire_cible(c))
 
     def _valider_cible(self) -> None:
         d = self.var_cible.get().strip()
@@ -255,7 +253,6 @@ class ConvertisseurApp(tk.Tk):
             self._boite(messagebox.showwarning, "Indiquez un dossier cible.")
             return
         self._ecrire_cible(d)
-        self._boite(messagebox.showinfo, "Dossier cible enregistré :\n" + d)
 
     def _basculer_sous_dossiers(self) -> None:
         self.after(80, self._appliquer_sous_dossiers)
@@ -282,8 +279,8 @@ class ConvertisseurApp(tk.Tk):
             self._boite(messagebox.showerror, "Ce chemin n'est pas un dossier valide.")
             return
         self.params.dossier_cible = str(p)
-        self._sauver_params()
-        self._boite(messagebox.showinfo, f"Dossier cible enregistré :\n{p}")
+        self.var_cible.set(str(p))
+        self._log("Dossier cible proposé : " + str(p))
 
     def _sauver_params(self, afficher: bool = True) -> None:
         self.params.dossier_cible = self.var_cible.get().strip()

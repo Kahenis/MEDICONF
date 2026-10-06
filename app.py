@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import queue
 import sys
 import threading
 import tkinter as tk
@@ -51,6 +52,7 @@ class ConvertisseurApp(tk.Tk):
         self.labels_nom: dict[str, tk.Label] = {}
         self.apercu_img = None
         self.conversion_en_cours = False
+        self.annuler_conversion = False
         self.filtre_images = tk.BooleanVar(value=True)
         self.filtre_docs = tk.BooleanVar(value=True)
         self._style()
@@ -112,6 +114,7 @@ class ConvertisseurApp(tk.Tk):
         self.var_conflit.set(self.params.conflit or "renommer")
         themes.appliquer(self)
         self._appliquer_cases()
+        self._afficher_chemin_enregistre()
         self._log("Paramètres repris : sous-dossiers=" + ("oui" if self._cases["sous"] else "non") + ", arborescence=" + ("oui" if self._cases["arbo"] else "non") + ", compression=" + ("oui" if self._cases["comp"] else "non"))
 
     def _noter_case(self, cle) -> None:
@@ -164,6 +167,8 @@ class ConvertisseurApp(tk.Tk):
         self.entree_cible.pack(side="left", fill="x", expand=True, padx=(0, 8))
         ttk.Button(ligne, text="Parcourir\u2026", command=self._parcourir_cible).pack(side="left", padx=(0, 8))
         ttk.Button(ligne, text="Choisir ce dossier", command=self._valider_cible).pack(side="left")
+        self.lbl_chemin_enregistre = ttk.Label(bloc, text="Chemin actuel de destination : (aucun)", style="Info.TLabel")
+        self.lbl_chemin_enregistre.pack(anchor="w", pady=(2, 6))
         hello = ttk.Frame(bloc)
         hello.pack(fill="x", pady=(4, 0))
         ttk.Label(hello, text="Boite de réception Hellodoc de l'utilisateur").pack(side="left")
@@ -298,6 +303,7 @@ class ConvertisseurApp(tk.Tk):
             )
             if afficher:
                 messagebox.showinfo(APP_TITRE, "Paramètres enregistrés.\nSous-dossiers : " + ("oui" if self.params.parcourir_sous_dossiers else "non") + "\nArborescence : " + ("oui" if self.params.conserver_arborescence else "non") + "\nCompression : " + ("oui" if self.params.compression else "non"))
+            self._afficher_chemin_enregistre()
         except Exception as e:
             self._log("Paramètres non enregistrés : " + str(e), erreur=True)
 
@@ -599,6 +605,13 @@ class ConvertisseurApp(tk.Tk):
             except Exception:
                 pass
 
+    def _afficher_chemin_enregistre(self) -> None:
+        try:
+            chemin = Parametres.charger().dossier_cible or "(aucun chemin enregistré)"
+            self.lbl_chemin_enregistre.configure(text="Chemin actuel de destination : " + chemin)
+        except Exception:
+            pass
+
     def _ouvrir_parametres(self) -> None:
         try:
             self.notebook.select(self.onglet_params)
@@ -621,42 +634,99 @@ class ConvertisseurApp(tk.Tk):
         if cible is None:
             self._ouvrir_parametres()
             return
-        if not messagebox.askyesno(APP_TITRE, "Convertir les fichiers cochés :\n" + "\n".join(p.name for p in fichiers) + f"\n\nvers :\n{cible} ?"):
+        if not messagebox.askyesno(APP_TITRE, f"Convertir {len(fichiers)} fichier(s) vers :\n{cible} ?"):
             return
         self._sauver_params(afficher=False)
+        self.annuler_conversion = False
         self.conversion_en_cours = True
         self.btn_convertir.configure(state="disabled")
         self.progress.configure(maximum=len(fichiers), value=0)
-        self.update_idletasks()
+        self._popup_conversion()
+        file_ui: queue.Queue = queue.Queue()
         racine = self.source_path if self.source_path and self.source_path.is_dir() else None
         compression = bool(self.var_comp.get())
         qualite = int(self.var_qualite.get())
         arbo = bool(self.var_arbo.get())
         conflit = self.var_conflit.get()
-        ok = ko = 0
-        try:
+
+        def travail() -> None:
+            ok = ko = 0
             for i, source in enumerate(fichiers, 1):
+                if self.annuler_conversion:
+                    file_ui.put(("stop", ok, ko))
+                    return
+                file_ui.put(("courant", source.name, i, len(fichiers)))
                 try:
                     dest = nom_pdf_cible(source, cible, racine, arbo, "renommer" if conflit == "demander" else conflit)
                     warn = convertir_fichier(source, dest, compression, qualite)
                     ok += 1
-                    msg = f"OK  {source.name}  →  {dest}"
-                    if source.suffix.lower() == ".pdf":
-                        msg += "  (copie seule)"
-                    if warn:
-                        msg += f"  ({warn})"
-                    self._log(msg)
-                    self._marquer(source, "ok")
+                    file_ui.put(("ok", source, dest, warn))
                 except Exception as e:
                     ko += 1
-                    self._log(f"ERREUR  {source.name} : {e}", erreur=True)
-                    self._marquer(source, "erreur")
-                self.progress.configure(value=i)
-                self.update_idletasks()
-        finally:
-            self.conversion_en_cours = False
-            self.btn_convertir.configure(state="normal")
-            self._log(f"Terminé : {ok} réussi(s), {ko} échec(s).")
+                    file_ui.put(("err", source, str(e)))
+            file_ui.put(("fin", ok, ko))
+
+        def pompe() -> None:
+            termine = False
+            try:
+                while True:
+                    ev = file_ui.get_nowait()
+                    if ev[0] == "courant":
+                        self.lbl_conv_fichier.configure(text=f"{ev[2]} / {ev[3]}\n{ev[1]}")
+                    elif ev[0] == "ok":
+                        source, dest, warn = ev[1], ev[2], ev[3]
+                        msg = f"OK  {source.name}  →  {dest}"
+                        if source.suffix.lower() == ".pdf":
+                            msg += "  (copie seule)"
+                        if warn:
+                            msg += f"  ({warn})"
+                        self._log(msg)
+                        self._marquer(source, "ok")
+                        self.progress.configure(value=self.progress["value"] + 1)
+                    elif ev[0] == "err":
+                        self._log(f"ERREUR  {ev[1].name} : {ev[2]}", erreur=True)
+                        self._marquer(ev[1], "erreur")
+                        self.progress.configure(value=self.progress["value"] + 1)
+                    elif ev[0] == "stop":
+                        self._log(f"Conversion annulée : {ev[1]} réussi(s), {ev[2]} échec(s).")
+                        termine = True
+                    elif ev[0] == "fin":
+                        self._log(f"Terminé : {ev[1]} réussi(s), {ev[2]} échec(s).")
+                        termine = True
+            except queue.Empty:
+                pass
+            if termine:
+                self.conversion_en_cours = False
+                self.btn_convertir.configure(state="normal")
+                try:
+                    self.popup_conv.destroy()
+                except Exception:
+                    pass
+                return
+            self.after(80, pompe)
+
+        threading.Thread(target=travail, daemon=True).start()
+        self.after(80, pompe)
+
+    def _popup_conversion(self) -> None:
+        pop = tk.Toplevel(self)
+        pop.title("Conversion en cours")
+        pop.geometry("460x160")
+        pop.transient(self)
+        pop.resizable(False, False)
+        ttk.Label(pop, text="Fichier en cours :").pack(anchor="w", padx=16, pady=(14, 4))
+        self.lbl_conv_fichier = ttk.Label(pop, text="Préparation…", wraplength=420)
+        self.lbl_conv_fichier.pack(anchor="w", padx=16)
+        ttk.Button(pop, text="Annuler", command=self._annuler_conversion).pack(pady=16)
+        pop.protocol("WM_DELETE_WINDOW", self._annuler_conversion)
+        self.popup_conv = pop
+
+    def _annuler_conversion(self) -> None:
+        self.annuler_conversion = True
+        try:
+            self.lbl_conv_fichier.configure(text="Arrêt demandé, fin du fichier en cours…")
+        except Exception:
+            pass
 
     def _effacer(self) -> None:
         self.source_path = None

@@ -39,7 +39,7 @@ jobs:
         run: |
           $msi = Join-Path $env:RUNNER_TEMP "libreoffice.msi"
           $extrait = Join-Path $env:RUNNER_TEMP "lo-extract"
-          Invoke-WebRequest -Uri "https://download.documentfoundation.org/libreoffice/stable/25.8.5/win/x86_64/LibreOffice_25.8.5_Win_x86-64.msi" -OutFile $msi
+          Invoke-WebRequest -Uri "https://download.documentfoundation.org/libreoffice/stable/25.8.7/win/x86_64/LibreOffice_25.8.7_Win_x86-64.msi" -OutFile $msi
           New-Item -ItemType Directory -Force -Path $extrait | Out-Null
           $proc = Start-Process msiexec -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extrait`"" -Wait -PassThru
           if ($proc.ExitCode -ne 0) { throw "Extraction LibreOffice impossible : $($proc.ExitCode)" }

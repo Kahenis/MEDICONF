@@ -178,20 +178,32 @@ def convertir_texte(source: Path, dest: Path) -> None:
 
 def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
     programme = Path(soffice).resolve().parent
+    binaire = programme / "soffice.bin"
     console = programme / "soffice.com"
-    lanceur = str(console if console.is_file() else Path(soffice).resolve())
+    lanceur = str(binaire if binaire.is_file() else console if console.is_file() else Path(soffice).resolve())
+    manquants = [
+        nom for nom in ("soffice.bin", "sal3.dll", "vcruntime140.dll", "fundamental.ini")
+        if not (programme / nom).is_file()
+    ]
+    if manquants:
+        raise RuntimeError(
+            "Dossier LibreOffice incomplet, fichier manquant : "
+            + ", ".join(manquants)
+            + ". Il faut tout le dossier LibreOffice, pas seulement une partie."
+        )
     profil = Path(tempfile.mkdtemp(prefix="MEDICONF-lo-"))
-    profil_uri = profil.resolve().as_uri()
     with tempfile.TemporaryDirectory() as tmp:
         travail = Path(tmp) / ("source" + source.suffix.lower())
         shutil.copy2(source, travail)
+        ini = (programme / "fundamental.ini").resolve().as_uri()
         cmd = [
             lanceur,
             "--headless",
             "--norestore",
             "--nolockcheck",
             "--nologo",
-            f"-env:UserInstallation={profil_uri}",
+            "--nofirststartwizard",
+            f"-env:UserInstallation={profil.resolve().as_uri()}",
             "--convert-to",
             "pdf:writer_pdf_Export",
             "--outdir",
@@ -200,6 +212,8 @@ def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
         ]
         env = os.environ.copy()
         env["PATH"] = str(programme) + os.pathsep + env.get("PATH", "")
+        env["UNO_PATH"] = str(programme)
+        env["URE_BOOTSTRAP"] = f"vnd.sun.star.pathname:{programme / 'fundamental.ini'}"
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -211,9 +225,12 @@ def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
         produits = [p for p in Path(tmp).glob("*.pdf") if p.is_file()]
         if not produits:
             detail = (proc.stderr or proc.stdout or "").strip().replace("\n", " ")
+            code = proc.returncode
+            if code in (3221225781, -1073741515):
+                detail = "bibliothèque Windows introuvable (0xC0000135). " + detail
             raise RuntimeError(
-                f"LibreOffice n'a produit aucun PDF (code {proc.returncode})"
-                + (f" : {detail[:240]}" if detail else f" via {lanceur}")
+                f"LibreOffice n'a produit aucun PDF (code {code})"
+                + (f" : {detail[:220]}" if detail else "")
             )
         shutil.copy2(produits[0], dest)
 
@@ -256,8 +273,24 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
         return ""
     soffice = trouver_soffice()
     if ext in {".rtf", ".doc", ".docx", ".odt"} and soffice:
-        convertir_via_soffice(source, dest, soffice)
-        return "Converti avec LibreOffice : " + soffice
+        try:
+            convertir_via_soffice(source, dest, soffice)
+            return "Converti avec LibreOffice : " + soffice
+        except Exception as erreur_lo:
+            if ext == ".docx":
+                convertir_docx_texte(source, dest)
+                return "LibreOffice a échoué (" + str(erreur_lo) + "). DOCX converti en texte."
+            if ext == ".rtf":
+                from apercu_doc import _texte_rtf
+                tmp = dest.with_suffix(".tmp.txt")
+                tmp.write_text(_texte_rtf(source), encoding="utf-8")
+                try:
+                    convertir_texte(tmp, dest)
+                finally:
+                    if tmp.exists():
+                        tmp.unlink()
+                return "LibreOffice a échoué (" + str(erreur_lo) + "). RTF converti en texte."
+            raise
     if ext == ".docx":
         convertir_docx_texte(source, dest)
         return "DOCX converti en texte (LibreOffice non detecte : mise en page simplifiee)."

@@ -35,6 +35,24 @@ jobs:
       - name: Installer _tk_data
         run: python verifier_tk.py --apres
 
+      - name: LibreOffice complet a cote de l'appli
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP "libreoffice.msi"
+          $extrait = Join-Path $env:RUNNER_TEMP "lo-extract"
+          Invoke-WebRequest -Uri "https://download.documentfoundation.org/libreoffice/stable/25.8.7/win/x86_64/LibreOffice_25.8.7_Win_x86-64.msi" -OutFile $msi
+          New-Item -ItemType Directory -Force -Path $extrait | Out-Null
+          $proc = Start-Process msiexec -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extrait`"" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Extraction LibreOffice impossible : $($proc.ExitCode)" }
+          $binaire = Get-ChildItem -Path $extrait -Filter soffice.bin -Recurse | Select-Object -First 1
+          if (-not $binaire) { throw "soffice.bin introuvable après extraction" }
+          $source = $binaire.Directory.Parent.FullName
+          $cible = "dist\MEDICONF\LibreOffice"
+          if (Test-Path $cible) { Remove-Item $cible -Recurse -Force }
+          Copy-Item $source $cible -Recurse
+          foreach ($nom in @("program\soffice.bin", "program\sal3.dll", "program\vcruntime140.dll", "program\fundamental.ini")) {
+            if (-not (Test-Path (Join-Path $cible $nom))) { throw "Fichier LibreOffice absent : $nom" }
+          }
+
       - name: Zip du dossier
         run: python faire_zip.py
 

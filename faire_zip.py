@@ -23,4 +23,9 @@ print("chemin exige : MEDICONF/_internal/_tcl_data/init.tcl ->", a_tcl)
 if not a_tk or not a_tcl:
     print("ERREUR : zip incomplet, non publie")
     sys.exit(1)
+a_lo = any(n.replace("\\", "/").endswith("MEDICONF/LibreOffice/program/soffice.bin") for n in noms)
+print("LibreOffice complet ->", a_lo)
+if not a_lo:
+    print("ERREUR : soffice.bin absent, zip non publie")
+    sys.exit(1)
 print("zip OK")

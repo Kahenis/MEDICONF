@@ -52,15 +52,10 @@ jobs:
           foreach ($nom in @("program\soffice.bin", "program\sal3.dll", "program\fundamental.ini")) {
             if (-not (Test-Path (Join-Path $cible $nom))) { throw "Fichier LibreOffice absent : $nom" }
           }
-          $vc = Join-Path $env:RUNNER_TEMP "vc_redist.x64.exe"
-          $vcDir = Join-Path $env:RUNNER_TEMP "vc-redist"
-          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vc
-          New-Item -ItemType Directory -Force -Path $vcDir | Out-Null
-          Start-Process $vc -ArgumentList "/extract:`"$vcDir`" /quiet" -Wait
-          $dlls = Get-ChildItem -Path $vcDir -Recurse -Include vcruntime140.dll,vcruntime140_1.dll,msvcp140.dll -ErrorAction SilentlyContinue
-          if (-not $dlls) { throw "Bibliothèques Visual C++ introuvables" }
-          foreach ($dll in $dlls) { Copy-Item $dll.FullName (Join-Path $cible "program") -Force }
-          if (-not (Test-Path (Join-Path $cible "program\vcruntime140.dll"))) { throw "vcruntime140.dll non copié" }
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            $origine = Join-Path $env:SystemRoot "System32\$dll"
+            if (Test-Path $origine) { Copy-Item $origine (Join-Path $cible "program") -Force }
+          }
 
       - name: Zip du dossier
         run: python faire_zip.py

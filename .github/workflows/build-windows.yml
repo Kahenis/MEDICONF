@@ -28,46 +28,12 @@ jobs:
 
       - name: PyInstaller dossier comme Ppix
         run: |
-          pyi-makespec --windowed --onedir --noupx --collect-all tkinter --collect-all PIL --collect-all pypdfium2 --runtime-hook rthook_tk.py --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import themes --hidden-import apercu --hidden-import apercu_image --hidden-import apercu_doc --hidden-import partie2 --hidden-import apercu_pdf --hidden-import scan_source --hidden-import app boot.py
+          pyi-makespec --windowed --onedir --noupx --collect-all tkinter --collect-all PIL --collect-all pypdfium2 --collect-all dxpdf --runtime-hook rthook_tk.py --name MEDICONF --hidden-import pypdf --hidden-import pypdfium2 --hidden-import ocr --hidden-import PIL --hidden-import reportlab --hidden-import menu --hidden-import reception --hidden-import patches_ui --hidden-import explorateur --hidden-import conversion --hidden-import parametres --hidden-import themes --hidden-import apercu --hidden-import apercu_image --hidden-import apercu_doc --hidden-import partie2 --hidden-import apercu_pdf --hidden-import scan_source --hidden-import dxpdf --hidden-import app boot.py
           python ajuster_spec.py
           pyinstaller --noconfirm --clean MEDICONF.spec
 
       - name: Installer _tk_data
         run: python verifier_tk.py --apres
-
-      - name: Bibliotheques Visual C++ pour LibreOffice
-        run: |
-          $dest = "dist\MEDICONF\vc"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          $noms = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "concrt140.dll")
-          foreach ($nom in $noms) {
-            $origine = Join-Path $env:SystemRoot "System32\$nom"
-            if (Test-Path $origine) { Copy-Item $origine (Join-Path $dest $nom) -Force }
-          }
-          Get-ChildItem $dest | Select-Object -ExpandProperty Name
-
-      - name: LibreOffice complet a cote de l'appli
-        continue-on-error: true
-        run: |
-          $msi = Join-Path $env:RUNNER_TEMP "libreoffice.msi"
-          $extrait = Join-Path $env:RUNNER_TEMP "lo-extract"
-          Invoke-WebRequest -Uri "https://download.documentfoundation.org/libreoffice/stable/25.8.7/win/x86_64/LibreOffice_25.8.7_Win_x86-64.msi" -OutFile $msi
-          New-Item -ItemType Directory -Force -Path $extrait | Out-Null
-          $proc = Start-Process msiexec -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extrait`"" -Wait -PassThru
-          if ($proc.ExitCode -ne 0) { throw "Extraction LibreOffice impossible : $($proc.ExitCode)" }
-          $binaire = Get-ChildItem -Path $extrait -Filter soffice.bin -Recurse | Select-Object -First 1
-          if (-not $binaire) { throw "soffice.bin introuvable après extraction" }
-          $source = $binaire.Directory.Parent.FullName
-          $cible = "dist\MEDICONF\LibreOffice"
-          if (Test-Path $cible) { Remove-Item $cible -Recurse -Force }
-          Copy-Item $source $cible -Recurse
-          foreach ($nom in @("program\soffice.bin", "program\sal3.dll", "program\fundamental.ini")) {
-            if (-not (Test-Path (Join-Path $cible $nom))) { throw "Fichier LibreOffice absent : $nom" }
-          }
-          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
-            $origine = Join-Path $env:SystemRoot "System32\$dll"
-            if (Test-Path $origine) { Copy-Item $origine (Join-Path $cible "program") -Force }
-          }
 
       - name: Zip du dossier
         run: python faire_zip.py

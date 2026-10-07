@@ -93,18 +93,17 @@ def texte(path: Path) -> str:
 
 
 def charger(path: Path, largeur: int, hauteur: int) -> Image.Image:
-    try:
-        from conversion import trouver_soffice, convertir_via_soffice
-        import apercu_pdf
-        soffice = trouver_soffice()
-        if soffice:
+    if Path(path).suffix.lower() == ".docx":
+        try:
             import tempfile
+            import dxpdf
+            import apercu_pdf
             with tempfile.TemporaryDirectory() as tmp:
-                dest = Path(tmp) / (Path(path).stem + ".pdf")
-                convertir_via_soffice(Path(path), dest, soffice)
+                dest = Path(tmp) / "apercu.pdf"
+                dxpdf.convert_file(str(path), str(dest))
                 return apercu_pdf.charger(dest, largeur, hauteur)
-    except Exception:
-        pass
+        except Exception:
+            pass
     largeur = max(largeur, 240)
     hauteur = max(hauteur, 180)
     contenu = texte(path) or "(aucun texte lisible dans ce document)"

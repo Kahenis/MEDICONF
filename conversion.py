@@ -318,29 +318,14 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
     if ext == ".txt":
         convertir_texte(source, dest)
         return ""
-    soffice = trouver_soffice()
-    if ext in {".rtf", ".doc", ".docx", ".odt"} and soffice:
-        try:
-            convertir_via_soffice(source, dest, soffice)
-            return "Converti avec LibreOffice : " + soffice
-        except Exception as erreur_lo:
-            if ext == ".docx":
-                convertir_docx_texte(source, dest)
-                return "LibreOffice a échoué (" + str(erreur_lo) + "). DOCX converti en texte."
-            if ext == ".rtf":
-                from apercu_doc import _texte_rtf
-                tmp = dest.with_suffix(".tmp.txt")
-                tmp.write_text(_texte_rtf(source), encoding="utf-8")
-                try:
-                    convertir_texte(tmp, dest)
-                finally:
-                    if tmp.exists():
-                        tmp.unlink()
-                return "LibreOffice a échoué (" + str(erreur_lo) + "). RTF converti en texte."
-            raise
     if ext == ".docx":
-        convertir_docx_texte(source, dest)
-        return "DOCX converti en texte (LibreOffice non detecte : mise en page simplifiee)."
+        try:
+            import dxpdf
+            dxpdf.convert_file(str(source), str(dest))
+            return "DOCX converti avec dxpdf, sans LibreOffice."
+        except Exception as e:
+            convertir_docx_texte(source, dest)
+            return "dxpdf a échoué (" + str(e) + "). DOCX converti en texte."
     if ext == ".rtf":
         from apercu_doc import _texte_rtf
         tmp = dest.with_suffix(".tmp.txt")

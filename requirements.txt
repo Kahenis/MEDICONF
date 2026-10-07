@@ -2,3 +2,4 @@ Pillow>=10.0.0
 reportlab>=4.0.0
 pypdf>=4.0.0
 pypdfium2>=4.0.0
+dxpdf>=0.8.1

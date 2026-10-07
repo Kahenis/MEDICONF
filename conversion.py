@@ -177,62 +177,70 @@ def convertir_texte(source: Path, dest: Path) -> None:
     c.save()
 
 def convertir_rtf(source: Path, dest: Path) -> None:
+    data = source.read_bytes()
+    if data[:2] == b"PK":
+        import dxpdf
+        dxpdf.convert_file(str(source), str(dest))
+        return
+    bas = data.lower()
+    marque = bas.find(b"504b0304")
+    if marque >= 0:
+        hexa = []
+        for c in bas[marque:marque + 12_000_000]:
+            if c in b"0123456789abcdef":
+                hexa.append(chr(c))
+            elif hexa:
+                break
+        blob = bytes.fromhex("".join(hexa[:12_000_000]))
+        if blob[:2] == b"PK":
+            import dxpdf
+            tmp = dest.with_suffix(".tmp.docx")
+            tmp.write_bytes(blob)
+            try:
+                dxpdf.convert_file(str(tmp), str(dest))
+                return
+            finally:
+                tmp.unlink(missing_ok=True)
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-    brut = source.read_bytes().decode("latin-1", errors="replace")
+    brut = data.decode("latin-1", errors="replace")
     blocs = []
     courant = []
-    gras = italique = souligne = False
-    taille = 11
-
-    def pousser(texte: str) -> None:
-        if texte:
-            courant.append(texte)
-
     i = 0
     n = len(brut)
     while i < n:
         car = brut[i]
-        if car == "{":
-            i += 1
-            continue
-        if car == "}":
+        if car in "{}":
             i += 1
             continue
         if car == "\\":
-            if i + 1 < n and brut[i + 1] in "'":
+            if brut.startswith("\\*", i):
+                profondeur = 1
+                i += 2
+                while i < n and profondeur:
+                    if brut[i] == "{":
+                        profondeur += 1
+                    elif brut[i] == "}":
+                        profondeur -= 1
+                    i += 1
+                continue
+            if i + 1 < n and brut[i + 1] == "'":
                 try:
-                    pousser(bytes([int(brut[i + 2:i + 4], 16)]).decode("latin-1"))
+                    courant.append(bytes([int(brut[i + 2:i + 4], 16)]).decode("latin-1"))
                 except Exception:
                     pass
                 i += 4
-                continue
-            if i + 1 < n and brut[i + 1] == "u" and i + 2 < n and (brut[i + 2].isdigit() or brut[i + 2] == "-"):
-                j = i + 2
-                while j < n and (brut[j].isdigit() or brut[j] == "-"):
-                    j += 1
-                try:
-                    val = int(brut[i + 2:j])
-                    if val < 0:
-                        val += 65536
-                    pousser(chr(val))
-                except Exception:
-                    pass
-                i = j + 1 if j < n and brut[j] == "?" else j
                 continue
             j = i + 1
             while j < n and brut[j].isalpha():
                 j += 1
             nom = brut[i + 1:j]
             k = j
-            if k < n and (brut[k].isdigit() or brut[k] == "-"):
+            while k < n and (brut[k].isdigit() or brut[k] == "-"):
                 k += 1
-                while k < n and brut[k].isdigit():
-                    k += 1
-            val = brut[j:k]
             if k < n and brut[k] == " ":
                 k += 1
-            if nom in ("pict", "bin", "object", "objdata"):
+            if nom in ("pict", "bin", "object", "objdata", "datastore", "themedata", "colorschememapping", "latentstyles", "fonttbl", "colortbl", "stylesheet", "info"):
                 profondeur = 1
                 i = k
                 while i < n and profondeur:
@@ -246,44 +254,29 @@ def convertir_rtf(source: Path, dest: Path) -> None:
                 blocs.append("".join(courant))
                 courant = []
             elif nom == "tab":
-                pousser("    ")
-            elif nom == "b":
-                gras = val != "0"
-            elif nom == "i":
-                italique = val != "0"
-            elif nom == "ul":
-                souligne = val != "0"
-            elif nom == "ulnone":
-                souligne = False
-            elif nom == "fs" and val.lstrip("-").isdigit():
-                taille = max(8, min(28, int(val) // 2))
+                courant.append("    ")
             i = k
             continue
-        pousser(car)
+        courant.append(car)
         i += 1
-        if i > n:
-            break
     if courant:
         blocs.append("".join(courant))
     style = ParagraphStyle("rtf", fontName="Times-Roman", fontSize=11, leading=14)
     doc = SimpleDocTemplate(str(dest), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm)
     story = []
     for texte in blocs:
-        propre = texte.replace("&", "&").replace("<", "<").replace(">", ">").strip()
-        if not propre:
-            story.append(Spacer(1, 8))
+        propre = "".join(c for c in texte if c.isprintable() or c == " ").strip()
+        if len(propre) > 80 and sum(c in "0123456789abcdefABCDEF" for c in propre) > len(propre) * 0.8:
             continue
-        if gras:
-            propre = f"<b>{propre}</b>"
-        if italique:
-            propre = f"<i>{propre}</i>"
-        if souligne:
-            propre = f"<u>{propre}</u>"
-        story.append(Paragraph(propre[:4000], style))
-        story.append(Spacer(1, 6))
+        propre = propre.replace("&", "&").replace("<", "<").replace(">", ">")
+        if not propre:
+            story.append(Spacer(1, 6))
+            continue
+        story.append(Paragraph(propre[:2000], style))
+        story.append(Spacer(1, 4))
     if not story:
-        story.append(Paragraph("(document RTF vide)", style))
-    story.extend(_images_flowables(_images_rtf(source.read_bytes())[:12]))
+        story.append(Paragraph("(aucun texte lisible dans ce RTF)", style))
+    story.extend(_images_flowables(_images_rtf(data)[:8]))
     doc.build(story)
 
 def _images_flowables(images: list[Image.Image]):

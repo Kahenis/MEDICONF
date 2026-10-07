@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Conversion images et documents bureautique vers PDF."""
 from __future__ import annotations
-import io, os, shutil, subprocess, tempfile
+import io, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 from PIL import Image, ImageSequence
 from reportlab.lib.pagesizes import A4
@@ -26,12 +26,28 @@ def est_document(chemin: Path) -> bool:
 def est_pdf(chemin: Path) -> bool:
     return chemin.suffix.lower() in EXTENSIONS_PDF
 
+def _dossiers_appli() -> list[Path]:
+    dossiers = []
+    if getattr(sys, "frozen", False):
+        dossiers.append(Path(sys.executable).resolve().parent)
+    dossiers.append(Path(__file__).resolve().parent)
+    return dossiers
+
 def trouver_soffice() -> str | None:
+    relatifs = (
+        Path("LibreOffice") / "program" / "soffice.exe",
+        Path("LibreOffice") / "App" / "libreoffice" / "program" / "soffice.exe",
+    )
+    for base in _dossiers_appli():
+        for rel in relatifs:
+            candidat = base / rel
+            if candidat.is_file():
+                return str(candidat)
     candidats = [
-        "soffice", "libreoffice",
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        "/usr/bin/soffice", "/usr/bin/libreoffice",
+        "/usr/bin/soffice",
+        "/usr/bin/libreoffice",
     ]
     for c in candidats:
         if os.path.isfile(c):
@@ -152,8 +168,22 @@ def convertir_texte(source: Path, dest: Path) -> None:
     c.save()
 
 def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
+    profil = Path(tempfile.gettempdir()) / "MEDICONF-libreoffice"
+    profil.mkdir(parents=True, exist_ok=True)
+    profil_uri = profil.resolve().as_uri()
     with tempfile.TemporaryDirectory() as tmp:
-        cmd = [soffice, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", tmp, str(source)]
+        cmd = [
+            soffice,
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            f"-env:UserInstallation={profil_uri}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            tmp,
+            str(source),
+        ]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         produits = list(Path(tmp).glob("*.pdf"))
         if not produits:

@@ -179,26 +179,38 @@ def convertir_texte(source: Path, dest: Path) -> None:
 def convertir_rtf(source: Path, dest: Path) -> None:
     data = source.read_bytes()
     if data[:2] == b"PK":
-        import dxpdf
-        dxpdf.convert_file(str(source), str(dest))
-        return
+        try:
+            import dxpdf
+            dxpdf.convert_file(str(source), str(dest))
+            return
+        except Exception:
+            pass
     bas = data.lower()
     marque = bas.find(b"504b0304")
     if marque >= 0:
         hexa = []
-        for c in bas[marque:marque + 12_000_000]:
+        for c in bas[marque:marque + 20_000_000]:
             if c in b"0123456789abcdef":
                 hexa.append(chr(c))
+            elif c in b" \r\n\t":
+                continue
             elif hexa:
                 break
-        blob = bytes.fromhex("".join(hexa[:12_000_000]))
-        if blob[:2] == b"PK":
-            import dxpdf
+        try:
+            blob = bytes.fromhex("".join(hexa))
+        except Exception:
+            blob = b""
+        if blob[:2] == b"PK" and blob.rfind(b"PK\x05\x06") >= 0:
+            import zipfile
             tmp = dest.with_suffix(".tmp.docx")
             tmp.write_bytes(blob)
             try:
-                dxpdf.convert_file(str(tmp), str(dest))
-                return
+                if zipfile.is_zipfile(tmp):
+                    import dxpdf
+                    dxpdf.convert_file(str(tmp), str(dest))
+                    return
+            except Exception:
+                pass
             finally:
                 tmp.unlink(missing_ok=True)
     from reportlab.lib.styles import ParagraphStyle

@@ -177,33 +177,44 @@ def convertir_texte(source: Path, dest: Path) -> None:
     c.save()
 
 def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
-    profil = Path(tempfile.gettempdir()) / "MEDICONF-libreoffice"
-    profil.mkdir(parents=True, exist_ok=True)
+    programme = Path(soffice).resolve().parent
+    console = programme / "soffice.com"
+    lanceur = str(console if console.is_file() else Path(soffice).resolve())
+    profil = Path(tempfile.mkdtemp(prefix="MEDICONF-lo-"))
     profil_uri = profil.resolve().as_uri()
     with tempfile.TemporaryDirectory() as tmp:
+        travail = Path(tmp) / ("source" + source.suffix.lower())
+        shutil.copy2(source, travail)
         cmd = [
-            soffice,
+            lanceur,
             "--headless",
             "--norestore",
             "--nolockcheck",
+            "--nologo",
             f"-env:UserInstallation={profil_uri}",
             "--convert-to",
-            "pdf",
+            "pdf:writer_pdf_Export",
             "--outdir",
             tmp,
-            str(source),
+            str(travail),
         ]
+        env = os.environ.copy()
+        env["PATH"] = str(programme) + os.pathsep + env.get("PATH", "")
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=180,
-            cwd=str(Path(soffice).resolve().parent),
+            cwd=str(programme),
+            env=env,
         )
-        produits = list(Path(tmp).glob("*.pdf"))
+        produits = [p for p in Path(tmp).glob("*.pdf") if p.is_file()]
         if not produits:
-            err = (proc.stderr or proc.stdout or "LibreOffice n'a produit aucun PDF").strip()
-            raise RuntimeError(err[:400])
+            detail = (proc.stderr or proc.stdout or "").strip().replace("\n", " ")
+            raise RuntimeError(
+                f"LibreOffice n'a produit aucun PDF (code {proc.returncode})"
+                + (f" : {detail[:240]}" if detail else f" via {lanceur}")
+            )
         shutil.copy2(produits[0], dest)
 
 def convertir_docx_texte(source: Path, dest: Path) -> None:

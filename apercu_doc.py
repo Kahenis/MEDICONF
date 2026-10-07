@@ -35,9 +35,28 @@ def _texte_docx(path: Path) -> str:
 
 def _texte_rtf(path: Path) -> str:
     brut = path.read_bytes().decode("latin-1", errors="replace")
-    brut = brut.replace("\\par", "\n").replace("\\line", "\n")
-    brut = re.sub(r"\\'[0-9a-fA-F]{2}", " ", brut)
+    brut = re.sub(r"\{\\\*.*?(?<!\\)\}", " ", brut, flags=re.S)
+    brut = brut.replace("\\par", "\n").replace("\\line", "\n").replace("\\tab", " ")
+
+    def hexa(m):
+        try:
+            return bytes([int(m.group(1), 16)]).decode("latin-1")
+        except Exception:
+            return " "
+
+    def uni(m):
+        try:
+            n = int(m.group(1))
+            if n < 0:
+                n += 65536
+            return chr(n)
+        except Exception:
+            return " "
+
+    brut = re.sub(r"\\'([0-9a-fA-F]{2})", hexa, brut)
+    brut = re.sub(r"\\u(-?\d+)\??", uni, brut)
     brut = re.sub(r"\\[a-zA-Z]+-?\d* ?", "", brut)
+    brut = brut.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
     brut = brut.replace("{", "").replace("}", "")
     return re.sub(r"[ \t]+\n", "\n", brut).strip()
 

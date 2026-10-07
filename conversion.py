@@ -137,7 +137,7 @@ def convertir_texte(source: Path, dest: Path) -> None:
                 y = ph - marge
             if c.stringWidth(ligne, "Helvetica", taille) <= largeur:
                 c.setFont("Helvetica", taille)
-                c.drawString(marge, y, ligne)
+                c.drawString(marge, y, ligne.encode("latin-1", "replace").decode("latin-1"))
                 y -= interligne
                 break
             coupe = len(ligne)
@@ -146,7 +146,7 @@ def convertir_texte(source: Path, dest: Path) -> None:
             if coupe <= 0:
                 coupe = 1
             c.setFont("Helvetica", taille)
-            c.drawString(marge, y, ligne[:coupe])
+            c.drawString(marge, y, ligne[:coupe].encode("latin-1", "replace").decode("latin-1"))
             ligne = ligne[coupe:]
             y -= interligne
     c.save()
@@ -205,6 +205,14 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
     if ext == ".docx":
         convertir_docx_texte(source, dest)
         return "DOCX converti en texte (LibreOffice non detecte : mise en page simplifiee)."
-    if ext in {".rtf", ".doc", ".odt"}:
-        raise RuntimeError("Conversion de ce format bureautique necessite LibreOffice.")
+    if ext == ".rtf":
+        from apercu_doc import _texte_rtf
+        tmp = dest.with_suffix(".tmp.txt")
+        tmp.write_text(_texte_rtf(source), encoding="utf-8")
+        try:
+            convertir_texte(tmp, dest)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+        return "RTF converti en texte (LibreOffice non detecte : mise en page simplifiee)."
     raise RuntimeError(f"Extension non geree : {ext}")

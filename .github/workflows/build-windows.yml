@@ -35,22 +35,6 @@ jobs:
       - name: Installer _tk_data
         run: python verifier_tk.py --apres
 
-      - name: LibreOffice portable a cote de l'appli
-        run: |
-          $msi = Join-Path $env:RUNNER_TEMP "libreoffice.msi"
-          $extrait = Join-Path $env:RUNNER_TEMP "lo-extract"
-          Invoke-WebRequest -Uri "https://download.documentfoundation.org/libreoffice/stable/25.8.7/win/x86_64/LibreOffice_25.8.7_Win_x86-64.msi" -OutFile $msi
-          New-Item -ItemType Directory -Force -Path $extrait | Out-Null
-          $proc = Start-Process msiexec -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extrait`"" -Wait -PassThru
-          if ($proc.ExitCode -ne 0) { throw "Extraction LibreOffice impossible : $($proc.ExitCode)" }
-          $soffice = Get-ChildItem -Path $extrait -Filter soffice.exe -Recurse | Select-Object -First 1
-          if (-not $soffice) { throw "soffice.exe introuvable dans LibreOffice" }
-          $source = $soffice.Directory.Parent.FullName
-          $cible = "dist\MEDICONF\LibreOffice"
-          if (Test-Path $cible) { Remove-Item $cible -Recurse -Force }
-          Copy-Item $source $cible -Recurse
-          if (-not (Test-Path "dist\MEDICONF\LibreOffice\program\soffice.exe")) { throw "LibreOffice non place a cote de MEDICONF" }
-
       - name: Zip du dossier
         run: python faire_zip.py
 

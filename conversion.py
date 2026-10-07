@@ -35,7 +35,9 @@ def _dossiers_appli() -> list[Path]:
 
 def trouver_soffice() -> str | None:
     relatifs = (
+        Path("LibreOffice") / "program" / "soffice.com",
         Path("LibreOffice") / "program" / "soffice.exe",
+        Path("LibreOffice") / "App" / "libreoffice" / "program" / "soffice.com",
         Path("LibreOffice") / "App" / "libreoffice" / "program" / "soffice.exe",
     )
     for base in _dossiers_appli():
@@ -43,7 +45,14 @@ def trouver_soffice() -> str | None:
             candidat = base / rel
             if candidat.is_file():
                 return str(candidat)
+        dossier = base / "LibreOffice"
+        if dossier.is_dir():
+            for nom in ("soffice.com", "soffice.exe"):
+                trouves = list(dossier.rglob(nom))
+                if trouves:
+                    return str(trouves[0])
     candidats = [
+        r"C:\Program Files\LibreOffice\program\soffice.com",
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
         "/usr/bin/soffice",
@@ -184,7 +193,13 @@ def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
             tmp,
             str(source),
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=str(Path(soffice).resolve().parent),
+        )
         produits = list(Path(tmp).glob("*.pdf"))
         if not produits:
             err = (proc.stderr or proc.stdout or "LibreOffice n'a produit aucun PDF").strip()
@@ -231,7 +246,7 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
     soffice = trouver_soffice()
     if ext in {".rtf", ".doc", ".docx", ".odt"} and soffice:
         convertir_via_soffice(source, dest, soffice)
-        return ""
+        return "Converti avec LibreOffice : " + soffice
     if ext == ".docx":
         convertir_docx_texte(source, dest)
         return "DOCX converti en texte (LibreOffice non detecte : mise en page simplifiee)."

@@ -180,90 +180,110 @@ def convertir_rtf(source: Path, dest: Path) -> None:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
     brut = source.read_bytes().decode("latin-1", errors="replace")
-    brut = re.sub(r"\{\\\*(?:\\[^{}]|\{[^{}]*\}|[^{}])*\}", " ", brut)
-    brut = re.sub(r"\{\\(?:fonttbl|colortbl|stylesheet|info|header|footer|pict)(?:\\[^{}]|\{[^{}]*\}|[^{}])*\}", " ", brut)
-
-    def hexa(m):
-        try:
-            return bytes([int(m.group(1), 16)]).decode("latin-1")
-        except Exception:
-            return ""
-
-    def uni(m):
-        try:
-            n = int(m.group(1))
-            if n < 0:
-                n += 65536
-            return chr(n)
-        except Exception:
-            return ""
-
-    brut = re.sub(r"\\'([0-9a-fA-F]{2})", hexa, brut)
-    brut = re.sub(r"\\u(-?\d+)\??", uni, brut)
     blocs = []
     courant = []
     gras = italique = souligne = False
     taille = 11
 
     def pousser(texte: str) -> None:
-        if not texte:
-            return
-        propre = texte.replace("&", "&").replace("<", "<").replace(">", ">")
+        if texte:
+            courant.append(texte)
+
+    i = 0
+    n = len(brut)
+    while i < n:
+        car = brut[i]
+        if car == "{":
+            i += 1
+            continue
+        if car == "}":
+            i += 1
+            continue
+        if car == "\\":
+            if i + 1 < n and brut[i + 1] in "'":
+                try:
+                    pousser(bytes([int(brut[i + 2:i + 4], 16)]).decode("latin-1"))
+                except Exception:
+                    pass
+                i += 4
+                continue
+            if i + 1 < n and brut[i + 1] == "u" and i + 2 < n and (brut[i + 2].isdigit() or brut[i + 2] == "-"):
+                j = i + 2
+                while j < n and (brut[j].isdigit() or brut[j] == "-"):
+                    j += 1
+                try:
+                    val = int(brut[i + 2:j])
+                    if val < 0:
+                        val += 65536
+                    pousser(chr(val))
+                except Exception:
+                    pass
+                i = j + 1 if j < n and brut[j] == "?" else j
+                continue
+            j = i + 1
+            while j < n and brut[j].isalpha():
+                j += 1
+            nom = brut[i + 1:j]
+            k = j
+            if k < n and (brut[k].isdigit() or brut[k] == "-"):
+                k += 1
+                while k < n and brut[k].isdigit():
+                    k += 1
+            val = brut[j:k]
+            if k < n and brut[k] == " ":
+                k += 1
+            if nom in ("pict", "bin", "object", "objdata"):
+                profondeur = 1
+                i = k
+                while i < n and profondeur:
+                    if brut[i] == "{":
+                        profondeur += 1
+                    elif brut[i] == "}":
+                        profondeur -= 1
+                    i += 1
+                continue
+            if nom in ("par", "line"):
+                blocs.append("".join(courant))
+                courant = []
+            elif nom == "tab":
+                pousser("    ")
+            elif nom == "b":
+                gras = val != "0"
+            elif nom == "i":
+                italique = val != "0"
+            elif nom == "ul":
+                souligne = val != "0"
+            elif nom == "ulnone":
+                souligne = False
+            elif nom == "fs" and val.lstrip("-").isdigit():
+                taille = max(8, min(28, int(val) // 2))
+            i = k
+            continue
+        pousser(car)
+        i += 1
+        if i > n:
+            break
+    if courant:
+        blocs.append("".join(courant))
+    style = ParagraphStyle("rtf", fontName="Times-Roman", fontSize=11, leading=14)
+    doc = SimpleDocTemplate(str(dest), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm)
+    story = []
+    for texte in blocs:
+        propre = texte.replace("&", "&").replace("<", "<").replace(">", ">").strip()
+        if not propre:
+            story.append(Spacer(1, 8))
+            continue
         if gras:
             propre = f"<b>{propre}</b>"
         if italique:
             propre = f"<i>{propre}</i>"
         if souligne:
             propre = f"<u>{propre}</u>"
-        courant.append((propre, taille))
-
-    i = 0
-    while i < len(brut):
-        car = brut[i]
-        if car == "\\":
-            mot = re.match(r"\\([a-zA-Z]+)(-?\d*) ?", brut[i:])
-            if mot:
-                nom, val = mot.group(1), mot.group(2)
-                if nom in ("par", "line"):
-                    blocs.append(courant)
-                    courant = []
-                elif nom == "tab":
-                    pousser("    ")
-                elif nom == "b":
-                    gras = val != "0"
-                elif nom == "i":
-                    italique = val != "0"
-                elif nom == "ul":
-                    souligne = val != "0"
-                elif nom == "ulnone":
-                    souligne = False
-                elif nom == "fs" and val:
-                    taille = max(8, min(28, int(val) // 2))
-                i += mot.end()
-                continue
-            if i + 1 < len(brut):
-                pousser(brut[i + 1])
-                i += 2
-                continue
-        if car not in "{}":
-            pousser(car)
-        i += 1
-    if courant:
-        blocs.append(courant)
-    style = ParagraphStyle("rtf", fontName="Times-Roman", fontSize=11, leading=14)
-    doc = SimpleDocTemplate(str(dest), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm)
-    story = []
-    for bloc in blocs:
-        if not bloc:
-            story.append(Spacer(1, 8))
-            continue
-        html = "".join(texte for texte, _taille in bloc).strip()
-        if html:
-            story.append(Paragraph(html, style))
-            story.append(Spacer(1, 6))
+        story.append(Paragraph(propre[:4000], style))
+        story.append(Spacer(1, 6))
     if not story:
         story.append(Paragraph("(document RTF vide)", style))
-    story.extend(_images_flowables(_images_rtf(source.read_bytes())))
+    story.extend(_images_flowables(_images_rtf(source.read_bytes())[:12]))
     doc.build(story)
 
 def _images_flowables(images: list[Image.Image]):
@@ -283,15 +303,27 @@ def _images_flowables(images: list[Image.Image]):
 def _images_rtf(data: bytes) -> list[Image.Image]:
     texte = data.decode("latin-1", errors="replace")
     images = []
-    for morceau in re.findall(r"\{\\pict\b[^{}]*\}", texte, flags=re.I):
+    pos = 0
+    while len(images) < 12:
+        i = texte.find("\\pict", pos)
+        if i < 0:
+            break
+        j = texte.find("}", i)
+        if j < 0:
+            break
+        morceau = texte[i:j]
+        pos = j + 1
         if "pngblip" not in morceau and "jpegblip" not in morceau:
             continue
-        hexa = re.sub(r"[^0-9A-Fa-f]", "", re.sub(r"\\[a-zA-Z]+\d* ?", "", morceau))
-        if len(hexa) < 16 or len(hexa) % 2:
+        hexa = "".join(c for c in morceau if c in "0123456789abcdefABCDEF")
+        if len(hexa) < 32 or len(hexa) > 8_000_000:
             continue
+        if len(hexa) % 2:
+            hexa = hexa[:-1]
         try:
-            images.append(Image.open(io.BytesIO(bytes.fromhex(hexa))))
-            images[-1].load()
+            im = Image.open(io.BytesIO(bytes.fromhex(hexa)))
+            im.load()
+            images.append(im)
         except Exception:
             continue
     return images

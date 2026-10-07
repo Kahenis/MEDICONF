@@ -35,7 +35,8 @@ def _texte_docx(path: Path) -> str:
 
 def _texte_rtf(path: Path) -> str:
     brut = path.read_bytes().decode("latin-1", errors="replace")
-    brut = re.sub(r"\{\\\*.*?(?<!\\)\}", " ", brut, flags=re.S)
+    brut = re.sub(r"\{\\\*(?:\\[^{}]|\{[^{}]*\}|[^{}])*\}", " ", brut)
+    brut = re.sub(r"\{\\(?:fonttbl|colortbl|stylesheet|info|header|footer|pict)(?:\\[^{}]|\{[^{}]*\}|[^{}])*\}", " ", brut)
     brut = brut.replace("\\par", "\n").replace("\\line", "\n").replace("\\tab", " ")
 
     def hexa(m):

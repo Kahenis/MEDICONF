@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Conversion images et documents bureautique vers PDF."""
 from __future__ import annotations
-import io, os, shutil, subprocess, sys, tempfile
+import io, os, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 from PIL import Image, ImageSequence
 from reportlab.lib.pagesizes import A4
@@ -146,6 +146,124 @@ def convertir_image(source: Path, dest: Path, compression: bool, qualite: int) -
     c.save()
 
 def convertir_texte(source: Path, dest: Path) -> None:
+    texte = source.read_text(encoding="utf-8", errors="replace")
+    c = canvas.Canvas(str(dest), pagesize=A4)
+    pw, ph = A4
+    marge = 18 * mm
+    y = ph - marge
+    taille = 10
+    interligne = 13
+    largeur = pw - 2 * marge
+    for brut in texte.splitlines() or [""]:
+        ligne = brut.replace("\t", "    ")
+        while True:
+            if y < marge + interligne:
+                c.showPage()
+                y = ph - marge
+            if c.stringWidth(ligne, "Helvetica", taille) <= largeur:
+                c.setFont("Helvetica", taille)
+                c.drawString(marge, y, ligne.encode("latin-1", "replace").decode("latin-1"))
+                y -= interligne
+                break
+            coupe = len(ligne)
+            while coupe > 0 and c.stringWidth(ligne[:coupe], "Helvetica", taille) > largeur:
+                coupe -= 1
+            if coupe <= 0:
+                coupe = 1
+            c.setFont("Helvetica", taille)
+            c.drawString(marge, y, ligne[:coupe].encode("latin-1", "replace").decode("latin-1"))
+            ligne = ligne[coupe:]
+            y -= interligne
+    c.save()
+
+def convertir_rtf(source: Path, dest: Path) -> None:
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    brut = source.read_bytes().decode("latin-1", errors="replace")
+    brut = re.sub(r"\{\\\*(?:\\[^{}]|\{[^{}]*\}|[^{}])*\}", " ", brut)
+    brut = re.sub(r"\{\\(?:fonttbl|colortbl|stylesheet|info|header|footer|pict)(?:\\[^{}]|\{[^{}]*\}|[^{}])*\}", " ", brut)
+
+    def hexa(m):
+        try:
+            return bytes([int(m.group(1), 16)]).decode("latin-1")
+        except Exception:
+            return ""
+
+    def uni(m):
+        try:
+            n = int(m.group(1))
+            if n < 0:
+                n += 65536
+            return chr(n)
+        except Exception:
+            return ""
+
+    brut = re.sub(r"\\'([0-9a-fA-F]{2})", hexa, brut)
+    brut = re.sub(r"\\u(-?\d+)\??", uni, brut)
+    blocs = []
+    courant = []
+    gras = italique = souligne = False
+    taille = 11
+
+    def pousser(texte: str) -> None:
+        if not texte:
+            return
+        propre = texte.replace("&", "&").replace("<", "<").replace(">", ">")
+        if gras:
+            propre = f"<b>{propre}</b>"
+        if italique:
+            propre = f"<i>{propre}</i>"
+        if souligne:
+            propre = f"<u>{propre}</u>"
+        courant.append((propre, taille))
+
+    i = 0
+    while i < len(brut):
+        car = brut[i]
+        if car == "\\":
+            mot = re.match(r"\\([a-zA-Z]+)(-?\d*) ?", brut[i:])
+            if mot:
+                nom, val = mot.group(1), mot.group(2)
+                if nom in ("par", "line"):
+                    blocs.append(courant)
+                    courant = []
+                elif nom == "tab":
+                    pousser("    ")
+                elif nom == "b":
+                    gras = val != "0"
+                elif nom == "i":
+                    italique = val != "0"
+                elif nom == "ul":
+                    souligne = val != "0"
+                elif nom == "ulnone":
+                    souligne = False
+                elif nom == "fs" and val:
+                    taille = max(8, min(28, int(val) // 2))
+                i += mot.end()
+                continue
+            if i + 1 < len(brut):
+                pousser(brut[i + 1])
+                i += 2
+                continue
+        if car not in "{}":
+            pousser(car)
+        i += 1
+    if courant:
+        blocs.append(courant)
+    style = ParagraphStyle("rtf", fontName="Times-Roman", fontSize=11, leading=14)
+    doc = SimpleDocTemplate(str(dest), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm)
+    story = []
+    for bloc in blocs:
+        if not bloc:
+            story.append(Spacer(1, 8))
+            continue
+        html = "".join(texte for texte, _taille in bloc).strip()
+        if html:
+            story.append(Paragraph(html, style))
+            story.append(Spacer(1, 6))
+    if not story:
+        story.append(Paragraph("(document RTF vide)", style))
+    doc.build(story)
     texte = source.read_text(encoding="utf-8", errors="replace")
     c = canvas.Canvas(str(dest), pagesize=A4)
     pw, ph = A4
@@ -327,13 +445,6 @@ def convertir_fichier(source: Path, dest: Path, compression: bool, qualite: int)
             convertir_docx_texte(source, dest)
             return "dxpdf a échoué (" + str(e) + "). DOCX converti en texte."
     if ext == ".rtf":
-        from apercu_doc import _texte_rtf
-        tmp = dest.with_suffix(".tmp.txt")
-        tmp.write_text(_texte_rtf(source), encoding="utf-8")
-        try:
-            convertir_texte(tmp, dest)
-        finally:
-            if tmp.exists():
-                tmp.unlink()
-        return "RTF converti en texte (LibreOffice non detecte : mise en page simplifiee)."
+        convertir_rtf(source, dest)
+        return "RTF converti avec la mise en forme (gras, italique, paragraphes), sans LibreOffice."
     raise RuntimeError(f"Extension non geree : {ext}")

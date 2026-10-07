@@ -104,7 +104,17 @@ def charger(path: Path, largeur: int, hauteur: int) -> Image.Image:
                 return apercu_pdf.charger(dest, largeur, hauteur)
         except Exception:
             pass
-    largeur = max(largeur, 240)
+    if Path(path).suffix.lower() == ".rtf":
+        try:
+            import tempfile
+            from conversion import convertir_rtf
+            import apercu_pdf
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "apercu.pdf"
+                convertir_rtf(Path(path), dest)
+                return apercu_pdf.charger(dest, largeur, hauteur)
+        except Exception:
+            pass
     hauteur = max(hauteur, 180)
     contenu = texte(path) or "(aucun texte lisible dans ce document)"
     im = Image.new("RGB", (largeur, hauteur), "#ffffff")

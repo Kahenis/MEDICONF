@@ -314,8 +314,8 @@ class ConvertisseurApp(tk.Tk):
         ttk.Button(cases, text="Tout décocher", command=self._tout_decocher).pack(side="left", padx=8)
         corps = ttk.Frame(p)
         corps.pack(fill="both", expand=True, padx=12, pady=6)
-        corps.columnconfigure(0, weight=3)
-        corps.columnconfigure(1, weight=2)
+        corps.columnconfigure(0, weight=1, uniform="moitie")
+        corps.columnconfigure(1, weight=1, uniform="moitie")
         corps.rowconfigure(0, weight=1)
         gauche = ttk.LabelFrame(corps, text=" Fichiers source ", padding=6)
         gauche.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
@@ -332,11 +332,14 @@ class ConvertisseurApp(tk.Tk):
         self.zone_drop.bind("<Configure>", lambda e: self.zone_drop.itemconfigure("liste", width=e.width))
         droite = ttk.LabelFrame(corps, text=" Aper\u00e7u ", padding=6)
         droite.grid(row=0, column=1, sticky="nsew")
-        self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0)
+        droite.grid_propagate(False)
+        self.cadre_apercu = droite
+        self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0, width=480, height=320)
         self.canvas_apercu.pack(fill="both", expand=True)
         self.lbl_image = tk.Label(self.canvas_apercu, bg="#e8eaed")
-        self.lbl_apercu_info = ttk.Label(droite, text="")
+        self.lbl_apercu_info = ttk.Label(droite, text="", wraplength=460)
         self.lbl_apercu_info.pack(fill="x", pady=(6, 0))
+        self.bind("<Configure>", self._fixer_apercu)
         actions = ttk.Frame(p)
         actions.pack(fill="x", padx=12, pady=4)
         self.btn_convertir = ttk.Button(actions, text="Convertir", command=self._tout_convertir)
@@ -355,6 +358,21 @@ class ConvertisseurApp(tk.Tk):
         self.journal.tag_configure("erreur", font=("Consolas", 9, "bold"), foreground="#b91c1c")
         self.journal.configure(state="disabled")
         self._log("Parcourir un fichier ou s\u00e9lectionner un dossier source pour commencer.")
+        self.after(100, self._fixer_apercu)
+
+    def _fixer_apercu(self, _evt=None) -> None:
+        if getattr(self, "_taille_apercu_en_cours", False):
+            return
+        self._taille_apercu_en_cours = True
+        try:
+            largeur = max(self.winfo_width() // 2, 360)
+            hauteur = max(self.winfo_height() // 2, 240)
+            self.cadre_apercu.configure(width=largeur, height=hauteur)
+            self.lbl_apercu_info.configure(wraplength=max(largeur - 24, 200))
+        except Exception:
+            pass
+        finally:
+            self._taille_apercu_en_cours = False
 
     def _parcourir_source(self) -> None:
         if self._boite(messagebox.askquestion, "Oui = dossier\nNon = fichier unique", icon="question") == "yes":
@@ -468,8 +486,8 @@ class ConvertisseurApp(tk.Tk):
         self.apercu_img = None
         self.lbl_apercu_info.configure(text=path.name + "  —  " + str(path))
         self.canvas_apercu.update_idletasks()
-        cw = max(self.canvas_apercu.winfo_width(), 280)
-        ch = max(self.canvas_apercu.winfo_height(), 220)
+        cw = max(self.cadre_apercu.winfo_width() - 16, self.winfo_width() // 2 - 24, 280)
+        ch = max(self.cadre_apercu.winfo_height() - 48, self.winfo_height() // 2 - 56, 200)
         if apercu_image.est_image(path):
             try:
                 im = apercu_image.charger(path, cw - 16, ch - 16)

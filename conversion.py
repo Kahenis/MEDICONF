@@ -176,13 +176,58 @@ def convertir_texte(source: Path, dest: Path) -> None:
             y -= interligne
     c.save()
 
+def _poser_bibliotheques(programme: Path) -> None:
+    noms = (
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "concrt140.dll",
+    )
+    sources = []
+    for base in _dossiers_appli():
+        sources.append(base / "vc")
+        sources.append(base / "LibreOffice" / "program")
+    windir = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+    if windir:
+        sources.append(Path(windir) / "System32")
+    for nom in noms:
+        if (programme / nom).is_file():
+            continue
+        for dossier in sources:
+            origine = dossier / nom
+            if origine.is_file():
+                try:
+                    shutil.copy2(origine, programme / nom)
+                except Exception:
+                    pass
+                break
+
+def _bibliotheque_manquante(lanceur: str) -> str:
+    if os.name != "nt":
+        return ""
+    try:
+        import ctypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.LoadLibraryExW.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_uint32]
+        kernel.LoadLibraryExW.restype = ctypes.c_void_p
+        if kernel.LoadLibraryExW(lanceur, None, 0x8):
+            return ""
+        code = ctypes.get_last_error()
+        buffer = ctypes.create_unicode_buffer(512)
+        kernel.FormatMessageW(0x1000, None, code, 0, buffer, 512, None)
+        return buffer.value.strip()
+    except Exception as e:
+        return str(e)
+
 def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
     programme = Path(soffice).resolve().parent
     binaire = programme / "soffice.bin"
     console = programme / "soffice.com"
     lanceur = str(binaire if binaire.is_file() else console if console.is_file() else Path(soffice).resolve())
     manquants = [
-        nom for nom in ("soffice.bin", "sal3.dll", "vcruntime140.dll", "fundamental.ini")
+        nom for nom in ("soffice.bin", "sal3.dll", "fundamental.ini")
         if not (programme / nom).is_file()
     ]
     if manquants:
@@ -191,6 +236,8 @@ def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
             + ", ".join(manquants)
             + ". Il faut tout le dossier LibreOffice, pas seulement une partie."
         )
+    _poser_bibliotheques(programme)
+    detail_dll = _bibliotheque_manquante(lanceur)
     profil = Path(tempfile.mkdtemp(prefix="MEDICONF-lo-"))
     with tempfile.TemporaryDirectory() as tmp:
         travail = Path(tmp) / ("source" + source.suffix.lower())
@@ -227,7 +274,7 @@ def convertir_via_soffice(source: Path, dest: Path, soffice: str) -> None:
             detail = (proc.stderr or proc.stdout or "").strip().replace("\n", " ")
             code = proc.returncode
             if code in (3221225781, -1073741515):
-                detail = "bibliothèque Windows introuvable (0xC0000135). " + detail
+                detail = "bibliothèque Windows introuvable (0xC0000135). " + (detail_dll or detail)
             raise RuntimeError(
                 f"LibreOffice n'a produit aucun PDF (code {code})"
                 + (f" : {detail[:220]}" if detail else "")

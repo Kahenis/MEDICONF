@@ -332,14 +332,13 @@ class ConvertisseurApp(tk.Tk):
         self.zone_drop.bind("<Configure>", lambda e: self.zone_drop.itemconfigure("liste", width=e.width))
         droite = ttk.LabelFrame(corps, text=" Aper\u00e7u ", padding=6)
         droite.grid(row=0, column=1, sticky="nsew")
-        droite.grid_propagate(False)
         self.cadre_apercu = droite
-        self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0, width=480, height=320)
+        self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0)
         self.canvas_apercu.pack(fill="both", expand=True)
         self.lbl_image = tk.Label(self.canvas_apercu, bg="#e8eaed")
         self.lbl_apercu_info = ttk.Label(droite, text="", wraplength=460)
         self.lbl_apercu_info.pack(fill="x", pady=(6, 0))
-        self.bind("<Configure>", self._fixer_apercu)
+        self.canvas_apercu.bind("<Configure>", self._largeur_apercu)
         actions = ttk.Frame(p)
         actions.pack(fill="x", padx=12, pady=4)
         self.btn_convertir = ttk.Button(actions, text="Convertir", command=self._tout_convertir)
@@ -358,21 +357,12 @@ class ConvertisseurApp(tk.Tk):
         self.journal.tag_configure("erreur", font=("Consolas", 9, "bold"), foreground="#b91c1c")
         self.journal.configure(state="disabled")
         self._log("Parcourir un fichier ou s\u00e9lectionner un dossier source pour commencer.")
-        self.after(100, self._fixer_apercu)
 
-    def _fixer_apercu(self, _evt=None) -> None:
-        if getattr(self, "_taille_apercu_en_cours", False):
-            return
-        self._taille_apercu_en_cours = True
+    def _largeur_apercu(self, evt=None) -> None:
         try:
-            largeur = max(self.winfo_width() // 2, 360)
-            hauteur = max(self.winfo_height() // 2, 240)
-            self.cadre_apercu.configure(width=largeur, height=hauteur)
-            self.lbl_apercu_info.configure(wraplength=max(largeur - 24, 200))
+            self.lbl_apercu_info.configure(wraplength=max(evt.width - 12, 200))
         except Exception:
             pass
-        finally:
-            self._taille_apercu_en_cours = False
 
     def _parcourir_source(self) -> None:
         if self._boite(messagebox.askquestion, "Oui = dossier\nNon = fichier unique", icon="question") == "yes":

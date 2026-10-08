@@ -2,6 +2,7 @@
 """Convertisseur PDF — images et documents bureautique vers PDF."""
 from __future__ import annotations
 
+import hashlib
 import os
 import queue
 import sys
@@ -102,10 +103,12 @@ class ConvertisseurApp(tk.Tk):
         self.var_sous.set(1 if self.params.parcourir_sous_dossiers else 0)
         self.var_arbo.set(1 if self.params.conserver_arborescence else 0)
         self.var_comp.set(1 if self.params.compression else 0)
+        self.var_doublons.set(1 if self.params.masquer_identiques else 0)
         self._cases = {
             "sous": bool(self.params.parcourir_sous_dossiers),
             "arbo": bool(self.params.conserver_arborescence),
             "comp": bool(self.params.compression),
+            "doublons": bool(self.params.masquer_identiques),
         }
         self.after(150, self._appliquer_cases)
         self.var_qualite.set(int(self.params.qualite_compression or 75))
@@ -122,12 +125,16 @@ class ConvertisseurApp(tk.Tk):
         if cle == "sous":
             self.var_sous.set(1 if self._cases[cle] else 0)
             self._basculer_sous_dossiers()
+        if cle == "doublons":
+            self.var_doublons.set(1 if self._cases[cle] else 0)
+            self.after(80, self._rafraichir_liste)
 
     def _appliquer_cases(self) -> None:
         for case, cle, var in (
             (self.case_sous, "sous", self.var_sous),
             (self.case_arbo, "arbo", self.var_arbo),
             (self.case_comp, "comp", self.var_comp),
+            (self.case_doublons, "doublons", self.var_doublons),
         ):
             actif = bool(self._cases.get(cle))
             var.set(1 if actif else 0)
@@ -142,6 +149,7 @@ class ConvertisseurApp(tk.Tk):
         self.case_sous.configure(command=lambda: self._noter_case("sous"))
         self.case_arbo.configure(command=lambda: self._noter_case("arbo"))
         self.case_comp.configure(command=lambda: self._noter_case("comp"))
+        self.case_doublons.configure(command=lambda: self._noter_case("doublons"))
         self._marquer_radios()
 
     def _marquer_radios(self) -> None:
@@ -188,10 +196,14 @@ class ConvertisseurApp(tk.Tk):
         self.var_comp = tk.IntVar(value=1 if self.params.compression else 0)
         self.case_comp = tk.Checkbutton(opts, text="Compresser les images avant le PDF", variable=self.var_comp, onvalue=1, offvalue=0, anchor="w", command=lambda: self._noter_case("comp"))
         self.case_comp.pack(fill="x", pady=3)
+        self.var_doublons = tk.IntVar(value=1 if self.params.masquer_identiques else 0)
+        self.case_doublons = tk.Checkbutton(opts, text="Masquer les fichiers 100 % identiques", variable=self.var_doublons, onvalue=1, offvalue=0, anchor="w", command=lambda: self._noter_case("doublons"))
+        self.case_doublons.pack(fill="x", pady=3)
         self._cases = {
             "sous": bool(self.params.parcourir_sous_dossiers),
             "arbo": bool(self.params.conserver_arborescence),
             "comp": bool(self.params.compression),
+            "doublons": bool(self.params.masquer_identiques),
         }
         qligne = ttk.Frame(opts)
         qligne.pack(fill="x", pady=8)
@@ -283,6 +295,7 @@ class ConvertisseurApp(tk.Tk):
         self.params.compression = bool(self._cases.get("comp"))
         self.params.qualite_compression = int(float(self.scale_qualite.get()))
         self.params.conserver_arborescence = bool(self._cases.get("arbo"))
+        self.params.masquer_identiques = bool(self._cases.get("doublons"))
         self.params.conflit = self.var_conflit.get()
         try:
             self.params.sauvegarder()
@@ -291,6 +304,7 @@ class ConvertisseurApp(tk.Tk):
                 "Enregistré : sous-dossiers=" + ("oui" if self.params.parcourir_sous_dossiers else "non")
                 + ", arborescence=" + ("oui" if self.params.conserver_arborescence else "non")
                 + ", compression=" + ("oui" if self.params.compression else "non")
+                + ", identiques masqués=" + ("oui" if self.params.masquer_identiques else "non")
                 + " — " + str(fichier_config())
             )
             if afficher:
@@ -420,7 +434,33 @@ class ConvertisseurApp(tk.Tk):
         return scan_source.lister(racine, self._sous_dossiers_demandes())
 
     def _visible(self) -> list[Path]:
-        return list(self.fichiers)
+        if not self._cases.get("doublons"):
+            return list(self.fichiers)
+        return self._sans_doublons(self.fichiers)
+
+    def _sans_doublons(self, fichiers: list[Path]) -> list[Path]:
+        vus = {}
+        gardes = []
+        masques = 0
+        for p in fichiers:
+            try:
+                taille = p.stat().st_size
+                h = hashlib.sha256()
+                with p.open("rb") as f:
+                    for bloc in iter(lambda: f.read(1024 * 1024), b""):
+                        h.update(bloc)
+                cle = (taille, h.hexdigest())
+            except Exception:
+                gardes.append(p)
+                continue
+            if cle in vus:
+                masques += 1
+                continue
+            vus[cle] = p
+            gardes.append(p)
+        if masques:
+            self._log(str(masques) + " fichier(s) identique(s) masqué(s)")
+        return gardes
 
     def _libelle(self, p: Path) -> str:
         return p.name

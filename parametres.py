@@ -21,6 +21,7 @@ class Parametres:
     compression: bool = True
     qualite_compression: int = 75
     conserver_arborescence: bool = False
+    masquer_identiques: bool = False
     conflit: str = "renommer"
     theme: str = "basic"
 

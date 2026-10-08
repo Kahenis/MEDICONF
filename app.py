@@ -330,15 +330,26 @@ class ConvertisseurApp(tk.Tk):
         self.zone_drop.create_window((0, 0), window=self.liste_frame, anchor="nw", tags="liste")
         self.liste_frame.bind("<Configure>", lambda _e: self.zone_drop.configure(scrollregion=self.zone_drop.bbox("all")))
         self.zone_drop.bind("<Configure>", lambda e: self.zone_drop.itemconfigure("liste", width=e.width))
+        self.zone_drop.bind("<MouseWheel>", self._molette_liste)
+        self.liste_frame.bind("<MouseWheel>", self._molette_liste)
         droite = ttk.LabelFrame(corps, text=" Aper\u00e7u ", padding=6)
         droite.grid(row=0, column=1, sticky="nsew")
         self.cadre_apercu = droite
+        zoom = ttk.Frame(droite)
+        zoom.pack(fill="x")
+        ttk.Button(zoom, text=" − ", width=3, command=self._zoom_moins).pack(side="left")
+        ttk.Button(zoom, text=" + ", width=3, command=self._zoom_plus).pack(side="left", padx=4)
+        self.lbl_zoom = ttk.Label(zoom, text="100 %")
+        self.lbl_zoom.pack(side="left", padx=6)
+        self._zoom = 1.0
+        self._apercu_chemin = ""
         self.canvas_apercu = tk.Canvas(droite, bg="#e8eaed", highlightthickness=0)
         self.canvas_apercu.pack(fill="both", expand=True)
         self.lbl_image = tk.Label(self.canvas_apercu, bg="#e8eaed")
         self.lbl_apercu_info = ttk.Label(droite, text="", wraplength=460)
         self.lbl_apercu_info.pack(fill="x", pady=(6, 0))
         self.canvas_apercu.bind("<Configure>", self._largeur_apercu)
+        self.canvas_apercu.bind("<MouseWheel>", self._molette_apercu)
         actions = ttk.Frame(p)
         actions.pack(fill="x", padx=12, pady=4)
         self.btn_convertir = ttk.Button(actions, text="Convertir", command=self._tout_convertir)
@@ -425,22 +436,26 @@ class ConvertisseurApp(tk.Tk):
                     actuel = True
             var = tk.BooleanVar(value=actuel)
             self.vars_coche[cle] = var
-            ligne = ttk.Frame(self.liste_frame)
-            ligne.pack(fill="x", anchor="w", pady=2)
+            ligne = tk.Frame(self.liste_frame, bg="#ffffff")
+            ligne.pack(fill="x", anchor="w", pady=1)
             case = ttk.Checkbutton(ligne, variable=var)
             case.pack(side="left")
             case._chemin_source = cle
             case.bind("<ButtonRelease-1>", lambda _e, c=cle: self.after(60, lambda: self._lire_case(c)))
             couleur = {"ok": "#15803d", "erreur": "#b91c1c"}.get(self.etats_fichier.get(cle, ""), "#1f4e79")
-            nom = tk.Label(ligne, text=p.name, font=("Segoe UI", 10), fg=couleur, bg="#ffffff", cursor="hand2")
+            fond = "#dbeafe" if cle == getattr(self, "_apercu_chemin", "") else "#ffffff"
+            ligne.configure(bg=fond)
+            nom = tk.Label(ligne, text=p.name, font=("Segoe UI", 10), fg=couleur, bg=fond, cursor="hand2")
             nom.pack(side="left", padx=(4, 8))
             self.labels_nom[cle] = nom
-            chemin_lbl = tk.Label(ligne, text=str(p), font=("Segoe UI", 8), fg="#6b7280", bg="#ffffff", cursor="hand2")
+            chemin_lbl = tk.Label(ligne, text=str(p), font=("Segoe UI", 8), fg="#6b7280", bg=fond, cursor="hand2")
             chemin_lbl.pack(side="left")
             nom._chemin_source = str(p)
             chemin_lbl._chemin_source = str(p)
-            nom.bind("<Button-1>", self._clic_nom_fichier)
-            chemin_lbl.bind("<Button-1>", self._clic_nom_fichier)
+            ligne._chemin_source = str(p)
+            for widget in (ligne, nom, chemin_lbl):
+                widget.bind("<Button-1>", self._clic_nom_fichier)
+                widget.bind("<MouseWheel>", self._molette_liste)
             try:
                 case.state(["selected"] if actuel else ["!selected"])
             except Exception:
@@ -465,24 +480,64 @@ class ConvertisseurApp(tk.Tk):
             self._afficher_apercu(p)
         return "break"
 
+    def _molette_apercu(self, event) -> str:
+        pas = -1 if event.delta > 0 else 1
+        self.canvas_apercu.yview_scroll(pas, "units")
+        return "break"
+
+    def _molette_liste(self, event) -> str:
+        pas = -1 if event.delta > 0 else 1
+        self.zone_drop.yview_scroll(pas, "units")
+        return "break"
+
+    def _zoom_plus(self) -> None:
+        self._zoom = min(3.0, round(self._zoom + 0.25, 2))
+        self._reafficher_apercu()
+
+    def _zoom_moins(self) -> None:
+        self._zoom = max(0.5, round(self._zoom - 0.25, 2))
+        self._reafficher_apercu()
+
+    def _reafficher_apercu(self) -> None:
+        self.lbl_zoom.configure(text=f"{int(self._zoom * 100)} %")
+        if self._apercu_chemin:
+            self._afficher_apercu(Path(self._apercu_chemin), garder_zoom=True)
+
     def _clic_nom_fichier(self, event) -> None:
         chemin = getattr(event.widget, "_chemin_source", "")
         if chemin:
             self._afficher_apercu(Path(chemin))
 
-    def _afficher_apercu(self, path: Path) -> None:
+    def _afficher_apercu(self, path: Path, garder_zoom: bool = False) -> None:
         path = Path(path)
+        if not garder_zoom:
+            self._zoom = 1.0
+            self.lbl_zoom.configure(text="100 %")
+        self._apercu_chemin = str(path)
+        for enfant in self.liste_frame.winfo_children():
+            cle = getattr(enfant, "_chemin_source", "")
+            fond = "#dbeafe" if cle == self._apercu_chemin else "#ffffff"
+            try:
+                enfant.configure(bg=fond)
+            except Exception:
+                pass
+            for widget in enfant.winfo_children():
+                if isinstance(widget, tk.Label):
+                    widget.configure(bg=fond)
         self.canvas_apercu.delete("all")
         self.apercu_img = None
         self.lbl_apercu_info.configure(text=path.name + "  —  " + str(path))
         self.canvas_apercu.update_idletasks()
         cw = max(self.cadre_apercu.winfo_width() - 16, self.winfo_width() // 2 - 24, 280)
         ch = max(self.cadre_apercu.winfo_height() - 48, self.winfo_height() // 2 - 56, 200)
+        cw = int(cw * self._zoom)
+        ch = int(ch * self._zoom)
         if apercu_image.est_image(path):
             try:
                 im = apercu_image.charger(path, cw - 16, ch - 16)
                 self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
                 self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+                self.canvas_apercu.configure(scrollregion=(0, 0, cw, ch))
             except Exception as e:
                 self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
             return
@@ -491,6 +546,7 @@ class ConvertisseurApp(tk.Tk):
                 im = apercu_doc.charger(path, cw - 8, ch - 8)
                 self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
                 self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+                self.canvas_apercu.configure(scrollregion=(0, 0, cw, ch))
             except Exception as e:
                 self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
             return
@@ -499,6 +555,7 @@ class ConvertisseurApp(tk.Tk):
                 im = apercu_pdf.charger(path, cw - 8, ch - 8)
                 self.apercu_img = ImageTk.PhotoImage(im, master=self.canvas_apercu)
                 self.canvas_apercu.create_image(cw // 2, ch // 2, image=self.apercu_img)
+                self.canvas_apercu.configure(scrollregion=(0, 0, cw, ch))
             except Exception as e:
                 self.canvas_apercu.create_text(12, 12, anchor="nw", text="Aperçu impossible\n" + str(e), fill="#444", width=cw - 24)
             return
@@ -781,6 +838,8 @@ class ConvertisseurApp(tk.Tk):
         self.etats_fichier = {}
         self.labels_nom = {}
         self.lbl_source.configure(text="(aucun fichier ni dossier)")
+        self._apercu_chemin = ""
+        self._zoom = 1.0
         self._rafraichir_liste()
         self.canvas_apercu.delete("all")
         self.apercu_img = None

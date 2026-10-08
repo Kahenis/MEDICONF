@@ -350,6 +350,9 @@ class ConvertisseurApp(tk.Tk):
         self.lbl_apercu_info.pack(fill="x", pady=(6, 0))
         self.canvas_apercu.bind("<Configure>", self._largeur_apercu)
         self.canvas_apercu.bind("<MouseWheel>", self._molette_apercu)
+        self.canvas_apercu.bind("<ButtonPress-1>", self._apercu_saisir)
+        self.canvas_apercu.bind("<B1-Motion>", self._apercu_deplacer)
+        self.canvas_apercu.configure(cursor="fleur")
         actions = ttk.Frame(p)
         actions.pack(fill="x", padx=12, pady=4)
         self.btn_convertir = ttk.Button(actions, text="Convertir", command=self._tout_convertir)
@@ -479,6 +482,12 @@ class ConvertisseurApp(tk.Tk):
             self.zone_drop.selection_set(idx)
             self._afficher_apercu(p)
         return "break"
+
+    def _apercu_saisir(self, event) -> None:
+        self.canvas_apercu.scan_mark(event.x, event.y)
+
+    def _apercu_deplacer(self, event) -> None:
+        self.canvas_apercu.scan_dragto(event.x, event.y, gain=1)
 
     def _molette_apercu(self, event) -> str:
         pas = -1 if event.delta > 0 else 1
